@@ -1,4 +1,5 @@
 import { SystemSettings, RepairRequest, Asset, Department } from '../types';
+import { supabase } from './supabaseClient';
 
 export interface LineApiLog {
   id: string;
@@ -151,13 +152,13 @@ ${acceptJobUrl}`;
   if (token && token.length > 5) {
     let sentViaProxy = false;
 
-    // Check if user specified a custom relay proxy (e.g. Google Apps Script Web App or custom backend)
+    // A. Check if user specified a custom relay proxy (e.g. Google Apps Script Web App or custom backend)
     const proxyUrl = settings.lineProxyUrl?.trim();
     if (proxyUrl && proxyUrl.startsWith('http')) {
       try {
         const response = await fetch(proxyUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Prevents CORS preflight on Google Apps Script
           body: JSON.stringify({
             token,
             messages: [{ type: 'text', text: textMessage }, flexMessage]
@@ -165,24 +166,57 @@ ${acceptJobUrl}`;
         });
 
         const resData = await response.json().catch(() => ({}));
-        if (response.ok) {
+        if (response.ok || response.status === 200) {
           oaSuccess = true;
           sentViaProxy = true;
           saveLineApiLog({
             type: 'LINE_OA',
             status: 'SUCCESS',
-            statusCode: response.status,
+            statusCode: 200,
             message: `ส่งข้อความแจ้งเตือนไปยัง LINE Messaging API (${basicId}) ผ่าน Relay Proxy เรียบร้อยแล้ว`,
             payload: { repairNo: repair.repairNo, textMessage, flexMessage },
             response: resData
           });
+          return {
+            success: true,
+            message: `ส่งข้อความเข้า LINE OA (${basicId}) สำเร็จผ่าน Relay Proxy!`
+          };
         }
       } catch (err: any) {
         console.warn('Proxy relay error:', err);
       }
     }
 
-    // If not sent via custom proxy, try standard server endpoint
+    // B. Attempt to send via Supabase Database Server RPC (pg_net) if configured
+    if (!sentViaProxy) {
+      try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('send_line_broadcast', {
+          token,
+          messages: [{ type: 'text', text: textMessage }, flexMessage]
+        });
+
+        if (!rpcError && rpcData?.success) {
+          oaSuccess = true;
+          sentViaProxy = true;
+          saveLineApiLog({
+            type: 'LINE_OA',
+            status: 'SUCCESS',
+            statusCode: 200,
+            message: `ส่งข้อความแจ้งเตือนไปยัง LINE Messaging API (${basicId}) ผ่าน Supabase Database Server เรียบร้อยแล้ว`,
+            payload: { repairNo: repair.repairNo, textMessage, flexMessage },
+            response: rpcData
+          });
+          return {
+            success: true,
+            message: `ส่งข้อความเข้า LINE OA (${basicId}) สำเร็จผ่าน Supabase Cloud Server!`
+          };
+        }
+      } catch (rpcErr) {
+        // RPC might not be installed yet in database
+      }
+    }
+
+    // C. If not sent via proxy or RPC, try standard relative server endpoint (Dev server / Node.js backend)
     if (!sentViaProxy) {
       try {
         const response = await fetch('/api/line/broadcast', {
@@ -206,17 +240,24 @@ ${acceptJobUrl}`;
             payload: { repairNo: repair.repairNo, textMessage, flexMessage },
             response: resData
           });
+          return {
+            success: true,
+            message: `ส่งข้อความแจ้งเตือนเข้า LINE OA (${basicId}) สำเร็จ!`
+          };
         } else if (response.status === 405 || response.status === 404) {
           // GitHub Pages or static host does not allow POST to /api/line/broadcast
-          oaSuccess = true;
           saveLineApiLog({
             type: 'LINE_OA',
-            status: 'SUCCESS',
-            statusCode: 200,
-            message: `[GitHub Pages Mode] ประมวลผลและสร้าง Flex Message สำหรับ LINE OA (${basicId}) สำเร็จ (ระบบตรวจพบเซิร์ฟเวอร์ Static Web/GitHub Pages HTTP ${response.status}: หากต้องการให้ส่งเข้าแอป LINE จริงจาก GitHub Pages สามารถใส่ URL ของ Google Apps Script Relay ในหน้าตั้งค่า)`,
-            payload: { repairNo: repair.repairNo, textMessage, flexMessage },
+            status: 'ERROR',
+            statusCode: response.status,
+            message: `[GitHub Pages] ไม่สามารถส่งตรงผ่าน /api/line/broadcast ได้ (เซิร์ฟเวอร์ Static HTTP ${response.status}) โปรดระบุ Relay Proxy URL (สร้างฟรีด้วย Google Apps Script ในหน้าตั้งค่า) เพื่อส่งเข้า LINE จริง`,
+            payload: { repairNo: repair.repairNo },
             response: { staticHostMode: true, httpStatus: response.status }
           });
+          return {
+            success: false,
+            message: `บน GitHub Pages: กรุณาใส่ Relay Proxy URL (สร้างฟรีด้วย Google Apps Script ในหน้าตั้งค่า) เพื่อส่งข้อความเข้าแอป LINE จริง`
+          };
         } else {
           saveLineApiLog({
             type: 'LINE_OA',
@@ -226,17 +267,24 @@ ${acceptJobUrl}`;
             payload: { repairNo: repair.repairNo },
             response: resData
           });
+          return {
+            success: false,
+            message: `LINE Messaging API Error ${response.status}: ${JSON.stringify(resData)}`
+          };
         }
       } catch (err: any) {
         saveLineApiLog({
           type: 'LINE_OA',
-          status: 'SUCCESS',
-          statusCode: 200,
-          message: `จำลองการส่งข้อมูลข้อความ Flex Message ไปยัง LINE OA (${basicId}) เรียบร้อยแล้ว`,
-          payload: { repairNo: repair.repairNo, textMessage, flexMessage },
-          response: { simulated: true }
+          status: 'ERROR',
+          statusCode: 500,
+          message: `ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ส่ง LINE: ${err.message}`,
+          payload: { repairNo: repair.repairNo },
+          response: { error: err.message }
         });
-        oaSuccess = true;
+        return {
+          success: false,
+          message: `เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์: ${err.message}`
+        };
       }
     }
   } else {

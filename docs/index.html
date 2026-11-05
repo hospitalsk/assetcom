@@ -14,9 +14,23 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="./assets/index-CCWDxESi.js"></script>
+    <script type="module" crossorigin src="./assets/index-nIU71UJM.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Cd-5wvbO.css">
   </head>
   <body class="bg-slate-50 text-slate-800 font-['Sarabun',sans-serif] antialiased">
     <div id="root"></div>
+    <script>
+      // Fallback redirect if user configures GitHub Pages with Source: / (root) branch instead of GitHub Actions or /docs
+      if (window.location.hostname.endsWith('github.io')) {
+        setTimeout(function() {
+          if (!window.__APP_MOUNTED__ && !document.getElementById('root')?.hasChildNodes()) {
+            var path = window.location.pathname.replace(/\/index\.html$/i, '').replace(/\/+$/, '');
+            if (!path.endsWith('/docs')) {
+              window.location.replace(path + '/docs/' + window.location.search + window.location.hash);
+            }
+          }
+        }, 300);
+      }
+    </script>
   </body>
 </html>

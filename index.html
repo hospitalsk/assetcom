@@ -17,15 +17,18 @@
   </head>
   <body class="bg-slate-50 text-slate-800 font-['Sarabun',sans-serif] antialiased">
     <div id="root"></div>
-    <script type="module">
-      const isGitHub = window.location.hostname.endsWith('github.io');
-      if (isGitHub) {
-        const path = window.location.pathname.replace(/\/index\.html$/i, '').replace(/\/+$/, '');
-        if (!path.endsWith('/docs')) {
-          window.location.replace(path + '/docs/' + window.location.search + window.location.hash);
-        }
-      } else {
-        import('./src/main.tsx');
+    <script type="module" src="./src/main.tsx"></script>
+    <script>
+      // Fallback redirect if user configures GitHub Pages with Source: / (root) branch instead of GitHub Actions or /docs
+      if (window.location.hostname.endsWith('github.io')) {
+        setTimeout(function() {
+          if (!window.__APP_MOUNTED__ && !document.getElementById('root')?.hasChildNodes()) {
+            var path = window.location.pathname.replace(/\/index\.html$/i, '').replace(/\/+$/, '');
+            if (!path.endsWith('/docs')) {
+              window.location.replace(path + '/docs/' + window.location.search + window.location.hash);
+            }
+          }
+        }, 300);
       }
     </script>
   </body>

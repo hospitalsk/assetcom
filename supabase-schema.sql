@@ -253,3 +253,34 @@ DROP POLICY IF EXISTS "Allow anon select audit_logs" ON public.audit_logs;
 DROP POLICY IF EXISTS "Allow anon insert/update audit_logs" ON public.audit_logs;
 CREATE POLICY "Allow anon select audit_logs" ON public.audit_logs FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update audit_logs" ON public.audit_logs FOR ALL USING (true);
+
+-- ========================================================
+-- 12. Optional LINE OA Broadcast Function via pg_net
+-- (Allows sending LINE messages directly from GitHub Pages via Supabase Cloud Server)
+-- ========================================================
+CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
+
+CREATE OR REPLACE FUNCTION public.send_line_broadcast(token text, messages jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  request_id bigint;
+BEGIN
+  SELECT net.http_post(
+    url := 'https://api.line.me/v2/bot/message/broadcast',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer ' || token
+    ),
+    body := jsonb_build_object('messages', messages)
+  ) INTO request_id;
+
+  RETURN jsonb_build_object('success', true, 'request_id', request_id);
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.send_line_broadcast(text, jsonb) TO anon, authenticated, service_role;

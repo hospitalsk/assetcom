@@ -16,6 +16,7 @@ import {
   Coins,
   Truck,
   CheckCircle2,
+  AlertCircle,
   MapPin,
   Check,
   X
@@ -324,9 +325,17 @@ export const SettingsView: React.FC = () => {
           </div>
 
           {lineTestSuccess && (
-            <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-bold flex items-center space-x-2">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-              <span>{lineTestSuccess}</span>
+            <div className={`p-4 rounded-xl text-xs font-bold flex items-center space-x-2 ${
+              lineTestSuccess.includes('⚠️') || lineTestSuccess.includes('Error') || lineTestSuccess.includes('กรุณา')
+                ? 'bg-amber-50 border border-amber-300 text-amber-900 shadow-sm'
+                : 'bg-emerald-50 border border-emerald-200 text-emerald-800'
+            }`}>
+              {lineTestSuccess.includes('⚠️') || lineTestSuccess.includes('Error') || lineTestSuccess.includes('กรุณา') ? (
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              )}
+              <span className="leading-relaxed">{lineTestSuccess}</span>
             </div>
           )}
 
@@ -534,8 +543,12 @@ export const SettingsView: React.FC = () => {
                     currentUser.name,
                     'ศูนย์สารสนเทศ'
                   );
-                  setLineTestSuccess(`ผลการส่ง API: ${res.message} (ดูรายละเอียดใน Console Log ด้านล่าง)`);
-                  setTimeout(() => setLineTestSuccess(null), 8000);
+                  if (res.success) {
+                    setLineTestSuccess(`✅ ${res.message} (ส่งสัญญาณสำเร็จ)`);
+                  } else {
+                    setLineTestSuccess(`⚠️ ${res.message}`);
+                  }
+                  setTimeout(() => setLineTestSuccess(null), 10000);
                 }}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >
