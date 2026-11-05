@@ -1,0 +1,6 @@
+{
+  "name": "Smart Asset & IT Inventory Management System",
+  "description": "ระบบบริหารจัดการครุภัณฑ์และวัสดุคอมพิวเตอร์ภาครัฐและโรงพยาบาล",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
