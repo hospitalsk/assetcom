@@ -171,8 +171,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [settings, setSettings] = useState<SystemSettings>(() => {
     const loaded = loadStorage('settings', defaultSystemSettings);
     // If previous placeholder logo was stored in localStorage, automatically update to new attached logo
-    if (!loaded.logoUrl || loaded.logoUrl.includes('unsplash') || loaded.logoUrl.includes('placeholder')) {
-      return { ...loaded, logoUrl: '/assets/aistudio/Logo_SK_26693d5e.png', emblemUrl: '/assets/aistudio/Logo_SK_26693d5e.png', organizationName: defaultSystemSettings.organizationName };
+    if (!loaded.logoUrl || loaded.logoUrl.includes('unsplash') || loaded.logoUrl.includes('placeholder') || loaded.logoUrl.startsWith('/assets/')) {
+      return { ...loaded, logoUrl: './assets/aistudio/Logo_SK_26693d5e.png', emblemUrl: './assets/aistudio/Logo_SK_26693d5e.png', organizationName: defaultSystemSettings.organizationName };
     }
     return loaded;
   });

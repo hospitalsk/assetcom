@@ -72,7 +72,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
           <div className="text-center space-y-2 mb-6">
             <div className="flex justify-center">
               <img 
-                src={settings.logoUrl || '/assets/aistudio/Logo_SK_26693d5e.png'} 
+                src={settings.logoUrl || './assets/aistudio/Logo_SK_26693d5e.png'} 
                 alt="Hospital Logo" 
                 className="w-20 h-20 sm:w-24 sm:h-24 object-contain mx-auto"
               />

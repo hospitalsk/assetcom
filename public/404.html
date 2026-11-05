@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <title>Smart Asset & IT Inventory Management System</title>
+    <script>
+      // Single Page App redirect for GitHub Pages
+      // When GitHub Pages returns 404 for a path or query parameter, redirect to index.html preserving URL
+      sessionStorage.redirect = location.href;
+      var pathSegmentsToKeep = 0;
+      var l = window.location;
+      var repo = l.pathname.split('/')[1];
+      // Redirect to the base directory of the repository
+      var target = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '');
+      if (repo && !repo.includes('.')) {
+        target += '/' + repo + '/';
+      } else {
+        target += '/';
+      }
+      window.location.replace(target);
+    </script>
+  </head>
+  <body>
+    <p style="font-family: sans-serif; text-align: center; margin-top: 50px;">กำลังโหลดระบบ Smart Asset...</p>
+  </body>
+</html>

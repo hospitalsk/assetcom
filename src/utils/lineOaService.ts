@@ -68,8 +68,11 @@ export const dispatchLineOaNotification = async (
   const token = settings.lineOaChannelAccessToken?.trim();
   const basicId = settings.lineOaBasicId || '@sangkhla_repair_bot';
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  const acceptJobUrl = `${origin}/?action=accept&repairId=${repair.id}`;
+  const getBaseAppUrl = () => {
+    if (typeof window === 'undefined') return 'http://localhost:3000';
+    return `${window.location.origin}${window.location.pathname}`.replace(/\/+$/, '');
+  };
+  const acceptJobUrl = `${getBaseAppUrl()}/?action=accept&repairId=${repair.id}`;
 
   // Format text message
   const textMessage = 
