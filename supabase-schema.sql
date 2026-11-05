@@ -188,35 +188,68 @@ ALTER TABLE public.budget_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
+-- 1. Departments Policies
+DROP POLICY IF EXISTS "Allow anon select departments" ON public.departments;
+DROP POLICY IF EXISTS "Allow anon insert/update departments" ON public.departments;
 CREATE POLICY "Allow anon select departments" ON public.departments FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update departments" ON public.departments FOR ALL USING (true);
 
+-- 2. Asset Categories Policies
+DROP POLICY IF EXISTS "Allow anon select asset_categories" ON public.asset_categories;
+DROP POLICY IF EXISTS "Allow anon insert/update asset_categories" ON public.asset_categories;
 CREATE POLICY "Allow anon select asset_categories" ON public.asset_categories FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update asset_categories" ON public.asset_categories FOR ALL USING (true);
 
+-- 3. Users Policies
+DROP POLICY IF EXISTS "Allow anon select users" ON public.users;
+DROP POLICY IF EXISTS "Allow anon insert/update users" ON public.users;
 CREATE POLICY "Allow anon select users" ON public.users FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update users" ON public.users FOR ALL USING (true);
 
+-- 4. Assets Policies
+DROP POLICY IF EXISTS "Allow anon select assets" ON public.assets;
+DROP POLICY IF EXISTS "Allow anon insert/update assets" ON public.assets;
 CREATE POLICY "Allow anon select assets" ON public.assets FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update assets" ON public.assets FOR ALL USING (true);
 
+-- 5. Inventory Items Policies
+DROP POLICY IF EXISTS "Allow anon select inventory_items" ON public.inventory_items;
+DROP POLICY IF EXISTS "Allow anon insert/update inventory_items" ON public.inventory_items;
 CREATE POLICY "Allow anon select inventory_items" ON public.inventory_items FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update inventory_items" ON public.inventory_items FOR ALL USING (true);
 
+-- 6. Inventory Transactions Policies
+DROP POLICY IF EXISTS "Allow anon select inventory_transactions" ON public.inventory_transactions;
+DROP POLICY IF EXISTS "Allow anon insert/update inventory_transactions" ON public.inventory_transactions;
 CREATE POLICY "Allow anon select inventory_transactions" ON public.inventory_transactions FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update inventory_transactions" ON public.inventory_transactions FOR ALL USING (true);
 
+-- 7. Borrow Requests Policies
+DROP POLICY IF EXISTS "Allow anon select borrow_requests" ON public.borrow_requests;
+DROP POLICY IF EXISTS "Allow anon insert/update borrow_requests" ON public.borrow_requests;
 CREATE POLICY "Allow anon select borrow_requests" ON public.borrow_requests FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update borrow_requests" ON public.borrow_requests FOR ALL USING (true);
 
+-- 8. Repair Requests Policies
+DROP POLICY IF EXISTS "Allow anon select repair_requests" ON public.repair_requests;
+DROP POLICY IF EXISTS "Allow anon insert/update repair_requests" ON public.repair_requests;
 CREATE POLICY "Allow anon select repair_requests" ON public.repair_requests FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update repair_requests" ON public.repair_requests FOR ALL USING (true);
 
+-- 9. Budget Plans Policies
+DROP POLICY IF EXISTS "Allow anon select budget_plans" ON public.budget_plans;
+DROP POLICY IF EXISTS "Allow anon insert/update budget_plans" ON public.budget_plans;
 CREATE POLICY "Allow anon select budget_plans" ON public.budget_plans FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update budget_plans" ON public.budget_plans FOR ALL USING (true);
 
+-- 10. System Settings Policies
+DROP POLICY IF EXISTS "Allow anon select system_settings" ON public.system_settings;
+DROP POLICY IF EXISTS "Allow anon insert/update system_settings" ON public.system_settings;
 CREATE POLICY "Allow anon select system_settings" ON public.system_settings FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update system_settings" ON public.system_settings FOR ALL USING (true);
 
+-- 11. Audit Logs Policies
+DROP POLICY IF EXISTS "Allow anon select audit_logs" ON public.audit_logs;
+DROP POLICY IF EXISTS "Allow anon insert/update audit_logs" ON public.audit_logs;
 CREATE POLICY "Allow anon select audit_logs" ON public.audit_logs FOR SELECT USING (true);
 CREATE POLICY "Allow anon insert/update audit_logs" ON public.audit_logs FOR ALL USING (true);
