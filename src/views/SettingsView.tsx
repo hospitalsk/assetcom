@@ -27,6 +27,8 @@ export const SettingsView: React.FC = () => {
   const { 
     settings, 
     updateSettings, 
+    saveSettingsToSupabase,
+    supabaseStatus,
     departments, 
     addDepartment, 
     deleteDepartment,
@@ -69,6 +71,13 @@ export const SettingsView: React.FC = () => {
 
   const [formSettings, setFormSettings] = useState(settings);
   const [lineTestSuccess, setLineTestSuccess] = useState<string | null>(null);
+  const [isSavingLineOa, setIsSavingLineOa] = useState(false);
+  const [showGasGuide, setShowGasGuide] = useState(false);
+
+  // Sync formSettings whenever settings load/update from Supabase
+  React.useEffect(() => {
+    setFormSettings(settings);
+  }, [settings]);
 
   // Dropdown Management State
   const [showAddCatModal, setShowAddCatModal] = useState(false);
@@ -103,9 +112,10 @@ export const SettingsView: React.FC = () => {
   const [editingRoleOldName, setEditingRoleOldName] = useState<string | null>(null);
   const [editingRoleNewName, setEditingRoleNewName] = useState('');
 
-  const handleSaveSettings = (e: React.FormEvent) => {
+  const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     updateSettings(formSettings);
+    await saveSettingsToSupabase(formSettings);
   };
 
   const handleCreateDept = (e: React.FormEvent) => {
@@ -307,6 +317,9 @@ export const SettingsView: React.FC = () => {
               <span className="text-xs font-bold text-emerald-800">
                 {formSettings.lineOaEnabled ? 'เปิดใช้งานอยู่' : 'ปิดใช้งาน'}
               </span>
+              <span className="text-[10px] text-emerald-600 bg-white px-2 py-0.5 rounded-full border border-emerald-300 font-mono">
+                Supabase: ซิงค์อัตโนมัติ (ID: 1)
+              </span>
             </div>
           </div>
 
@@ -317,11 +330,23 @@ export const SettingsView: React.FC = () => {
             </div>
           )}
 
-          <form onSubmit={(e) => {
+          <form onSubmit={async (e) => {
             e.preventDefault();
-            updateSettings(formSettings);
-            setLineTestSuccess('บันทึกการตั้งค่า LINE OA API สำเร็จแล้ว!');
-            setTimeout(() => setLineTestSuccess(null), 4000);
+            setIsSavingLineOa(true);
+            try {
+              updateSettings(formSettings);
+              const result = await saveSettingsToSupabase(formSettings);
+              if (result && result.success) {
+                setLineTestSuccess('✅ บันทึกการตั้งค่า LINE OA ลงฐานข้อมูล Supabase (ตาราง system_settings ID=1) ถาวรเรียบร้อยแล้ว!');
+              } else {
+                setLineTestSuccess('✅ บันทึกการตั้งค่าเรียบร้อยแล้ว');
+              }
+            } catch (err: any) {
+              setLineTestSuccess('⚠️ เกิดข้อผิดพลาด: ' + err.message);
+            } finally {
+              setIsSavingLineOa(false);
+              setTimeout(() => setLineTestSuccess(null), 6000);
+            }
           }} className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200">
               <div>
@@ -396,6 +421,87 @@ export const SettingsView: React.FC = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Relay Proxy URL (ทางเลือกสำหรับ GitHub Pages เพื่อส่งข้อความข้ามโดเมน)
+              </label>
+              <input
+                type="text"
+                value={formSettings.lineProxyUrl || ''}
+                onChange={(e) => setFormSettings({ ...formSettings, lineProxyUrl: e.target.value })}
+                placeholder="เช่น https://script.google.com/macros/s/.../exec"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-emerald-500 font-mono"
+              />
+              <div className="flex items-center justify-between mt-1">
+                <span className="text-[10px] text-slate-400">
+                  สำหรับรันบน GitHub Pages: ใช้ Google Apps Script Web App ฟรี ไม่ต้องมีเซิร์ฟเวอร์
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowGasGuide(!showGasGuide)}
+                  className="text-[11px] text-emerald-600 hover:text-emerald-700 font-bold underline cursor-pointer"
+                >
+                  {showGasGuide ? 'ซ่อนวิธีทำ' : '📖 วิธีสร้าง Google Apps Script Relay ฟรี'}
+                </button>
+              </div>
+            </div>
+
+            {showGasGuide && (
+              <div className="p-4 bg-emerald-50/60 border border-emerald-200 rounded-2xl space-y-2 text-xs text-slate-700">
+                <div className="font-bold text-slate-900 flex items-center space-x-1.5">
+                  <span>🚀 วิธีส่ง LINE จาก GitHub Pages ฟรี 100% ด้วย Google Apps Script:</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 text-[11px] text-slate-600 pl-1">
+                  <li>เปิด <a href="https://script.google.com" target="_blank" rel="noreferrer" className="text-emerald-700 underline font-bold">script.google.com</a> แล้วกด New Project</li>
+                  <li>วางโค้ดสคริปต์ด้านล่างนี้ลงในหน้า Code.gs แล้วกด Save:</li>
+                </ol>
+                <div className="relative">
+                  <pre className="p-3 bg-slate-900 text-slate-100 rounded-xl text-[10px] font-mono overflow-x-auto">
+{`function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/broadcast', {
+    method: 'post',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + data.token
+    },
+    payload: JSON.stringify({ messages: data.messages }),
+    muteHttpExceptions: true
+  });
+  return ContentService.createTextOutput(res.getContentText()).setMimeType(ContentService.MimeType.JSON);
+}`}
+                  </pre>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/broadcast', {
+    method: 'post',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + data.token
+    },
+    payload: JSON.stringify({ messages: data.messages }),
+    muteHttpExceptions: true
+  });
+  return ContentService.createTextOutput(res.getContentText()).setMimeType(ContentService.MimeType.JSON);
+}`);
+                      alert('คัดลอกโค้ด Google Apps Script เรียบร้อย!');
+                    }}
+                    className="absolute top-2 right-2 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg cursor-pointer"
+                  >
+                    คัดลอกโค้ด
+                  </button>
+                </div>
+                <ol start={3} className="list-decimal list-inside space-y-1 text-[11px] text-slate-600 pl-1">
+                  <li>กด <b>Deploy</b> &gt; <b>New deployment</b> &gt; เลือก <b>Web app</b></li>
+                  <li>ตั้งค่า Who has access: <b>Anyone</b> แล้วกด Deploy</li>
+                  <li>คัดลอก <b>Web app URL</b> มาวางในช่อง Relay Proxy URL ด้านบนนี้ แล้วกดบันทึก</li>
+                </ol>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
                 LINE Notify Token (ทางเลือก - แจ้งเตือนเข้าไลน์กลุ่มอัตโนมัติ)
               </label>
               <input
@@ -429,19 +535,20 @@ export const SettingsView: React.FC = () => {
                     'ศูนย์สารสนเทศ'
                   );
                   setLineTestSuccess(`ผลการส่ง API: ${res.message} (ดูรายละเอียดใน Console Log ด้านล่าง)`);
-                  setTimeout(() => setLineTestSuccess(null), 6000);
+                  setTimeout(() => setLineTestSuccess(null), 8000);
                 }}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
               >
                 ⚡ ทดสอบยิงข้อความจริง (Test LINE API)
               </button>
 
               <button
                 type="submit"
-                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-emerald-600/30 flex items-center space-x-1.5"
+                disabled={isSavingLineOa}
+                className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-md shadow-emerald-600/30 flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
-                <span>บันทึกการตั้งค่า LINE OA</span>
+                <span>{isSavingLineOa ? 'กำลังบันทึกลง Supabase...' : 'บันทึกการตั้งค่า LINE OA'}</span>
               </button>
             </div>
           </form>

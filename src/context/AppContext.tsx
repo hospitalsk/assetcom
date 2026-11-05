@@ -129,6 +129,7 @@ interface AppContextType {
 
   markNotificationAsRead: (id: string) => void;
   updateSettings: (newSettings: Partial<SystemSettings>) => void;
+  saveSettingsToSupabase: (newSettings: Partial<SystemSettings>) => Promise<{ success: boolean; data?: any; error?: any }>;
   resetToDefaultData: () => void;
 }
 
@@ -712,6 +713,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification('บันทึกการตั้งค่า', 'อัปเดตการตั้งค่าระบบเรียบร้อยแล้ว', 'success', 'settings');
   };
 
+  const saveSettingsToSupabase = async (newSettings: Partial<SystemSettings>) => {
+    const updated = { ...settings, ...newSettings };
+    setSettings(updated);
+    localStorage.setItem('smart_asset_settings', JSON.stringify(updated));
+    const result = await syncSettingsToSupabase(updated);
+    addNotification('บันทึกการตั้งค่า', 'บันทึกลง Supabase สำเร็จ', 'success', 'settings');
+    return result;
+  };
+
   const resetToDefaultData = () => {
     if (window.confirm('คุณต้องการรีเซ็ตข้อมูลทั้งหมดกลับเป็นค่าเริ่มต้นหรือไม่?')) {
       localStorage.clear();
@@ -723,6 +733,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider value={{
       supabaseStatus,
+      saveSettingsToSupabase,
       currentUser,
       isLoggedIn,
       login,

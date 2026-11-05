@@ -287,24 +287,37 @@ export const syncInventoryItemToSupabase = async (item: InventoryItem) => {
 /**
  * Upsert system settings to Supabase
  */
-export const syncSettingsToSupabase = async (settings: SystemSettings) => {
+export const syncSettingsToSupabase = async (settings: SystemSettings): Promise<{ success: boolean; data?: any; error?: any }> => {
   try {
-    await supabase.from('system_settings').upsert({
+    const payload = {
       id: 1,
-      organization_name: settings.organizationName,
-      logo_url: settings.logoUrl,
-      emblem_url: settings.emblemUrl,
-      fiscal_year: parseInt(settings.fiscalYear || '2568', 10),
-      line_oa_enabled: settings.lineOaEnabled,
-      line_oa_basic_id: settings.lineOaBasicId,
-      line_oa_channel_access_token: settings.lineOaChannelAccessToken,
-      line_oa_channel_secret: settings.lineOaChannelSecret,
-      line_oa_webhook_url: settings.lineOaWebhookUrl,
-      line_notify_token: settings.lineNotifyToken,
+      organization_name: settings.organizationName || 'โรงพยาบาลสังขละบุรี (SANGKHLABURI HOSPITAL)',
+      logo_url: settings.logoUrl || './assets/aistudio/Logo_SK_26693d5e.png',
+      emblem_url: settings.emblemUrl || './assets/aistudio/Logo_SK_26693d5e.png',
+      fiscal_year: parseInt(String(settings.fiscalYear || '2568'), 10),
+      line_oa_enabled: typeof settings.lineOaEnabled === 'boolean' ? settings.lineOaEnabled : true,
+      line_oa_basic_id: settings.lineOaBasicId || '@765satuz',
+      line_oa_channel_access_token: settings.lineOaChannelAccessToken || '',
+      line_oa_channel_secret: settings.lineOaChannelSecret || '',
+      line_oa_webhook_url: settings.lineOaWebhookUrl || '',
+      line_notify_token: settings.lineNotifyToken || null,
       updated_at: new Date().toISOString()
-    });
-  } catch (e) {
+    };
+
+    const { data, error } = await supabase
+      .from('system_settings')
+      .upsert(payload, { onConflict: 'id' })
+      .select();
+
+    if (error) {
+      console.error('Failed to sync settings to Supabase:', error);
+      return { success: false, error };
+    }
+    console.log('Successfully saved system settings to Supabase (id=1):', data);
+    return { success: true, data };
+  } catch (e: any) {
     console.error('Failed to sync settings to Supabase:', e);
+    return { success: false, error: e };
   }
 };
 

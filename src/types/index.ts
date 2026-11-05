@@ -243,6 +243,7 @@ export interface SystemSettings {
   lineOaWebhookUrl?: string;
   lineOaEnabled?: boolean;
   lineNotifyToken?: string;
+  lineProxyUrl?: string;
 }
 
 export interface AssetTransferRecord {

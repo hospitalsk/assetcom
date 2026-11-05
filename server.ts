@@ -11,6 +11,17 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Enable CORS for cross-origin requests (e.g. from GitHub Pages, previews)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Serve static assets from public if available
 app.use(express.static(path.join(__dirname, 'public')));
 
