@@ -17,6 +17,13 @@
   </head>
   <body class="bg-slate-50 text-slate-800 font-['Sarabun',sans-serif] antialiased">
     <div id="root"></div>
+    <script>
+      // If root index.html is served statically on GitHub Pages (where /src/main.tsx would 404), redirect to /docs/
+      if (window.location.hostname.endsWith('github.io') && !document.querySelector('script[src*="assets/"]') && !window.location.pathname.includes('/docs')) {
+        var base = window.location.pathname.replace(/\/+$/, '');
+        window.location.replace(base + '/docs/' + window.location.search + window.location.hash);
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
