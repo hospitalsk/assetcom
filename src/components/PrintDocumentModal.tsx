@@ -1,7 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { Printer, X } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 
 interface PrintDocumentModalProps {
   title: string;
@@ -128,11 +127,7 @@ export const PrintDocumentModal: React.FC<PrintDocumentModalProps> = ({
           ))}
 
           {/* Official Signatures according to Procurement Regulation */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-10 mt-8 border-t border-slate-400 text-center text-xs page-break-inside-avoid">
-            <div className="flex flex-col items-center justify-center space-y-2">
-              <QRCodeSVG value={`DOC-${documentNo}`} size={56} level="M" />
-              <span className="text-[10px] text-slate-500">ตรวจสอบความถูกต้อง</span>
-            </div>
+          <div className="grid grid-cols-2 gap-8 pt-10 mt-8 border-t border-slate-400 text-center text-xs page-break-inside-avoid">
             <div className="space-y-12">
               <div className="font-semibold text-slate-800">ลงชื่อ......................................................ผู้จัดทำ</div>
               <div>({itOfficerUser.name})<br/><span className="text-[11px] text-slate-600">{itOfficerUser.position}</span></div>
