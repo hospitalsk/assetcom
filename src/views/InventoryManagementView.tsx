@@ -26,6 +26,7 @@ export const InventoryManagementView: React.FC = () => {
   // Transaction form state
   const [trxQty, setTrxQty] = useState(1);
   const [trxUnitPrice, setTrxUnitPrice] = useState(100);
+  const [trxMinQty, setTrxMinQty] = useState(5);
   const [trxDeptId, setTrxDeptId] = useState(currentUser.departmentId);
   const [trxNotes, setTrxNotes] = useState('');
 
@@ -65,7 +66,8 @@ export const InventoryManagementView: React.FC = () => {
       trxQty, 
       showTrxModal.type === 'รับเข้าสต็อก' ? trxUnitPrice : undefined, 
       showTrxModal.type === 'เบิกวัสดุ' ? trxDeptId : undefined, 
-      trxNotes
+      trxNotes,
+      showTrxModal.type === 'รับเข้าสต็อก' ? trxMinQty : undefined
     );
     
     setShowTrxModal(null);
@@ -150,6 +152,7 @@ export const InventoryManagementView: React.FC = () => {
                           onClick={() => {
                             setShowTrxModal({ item, type: 'รับเข้าสต็อก' });
                             setTrxUnitPrice(item.unitPrice);
+                            setTrxMinQty(item.minQty);
                           }}
                           className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors"
                         >
@@ -289,15 +292,28 @@ export const InventoryManagementView: React.FC = () => {
 
               {showTrxModal.type === 'รับเข้าสต็อก' && (
                 <>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">ราคาต่อหน่วย (บาท)</label>
-                    <input
-                      type="number"
-                      required
-                      value={trxUnitPrice}
-                      onChange={(e) => setTrxUnitPrice(Number(e.target.value))}
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">ราคาต่อหน่วย (บาท)</label>
+                      <input
+                        type="number"
+                        required
+                        value={trxUnitPrice}
+                        onChange={(e) => setTrxUnitPrice(Number(e.target.value))}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">จุดสั่งซื้อขั้นต่ำ (Min Qty)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={trxMinQty}
+                        onChange={(e) => setTrxMinQty(Number(e.target.value))}
+                        className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500 font-bold text-blue-800"
+                      />
+                    </div>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
                     <span className="text-slate-600 font-semibold">ราคารวมทั้งสิ้น:</span>

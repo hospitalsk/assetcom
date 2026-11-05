@@ -47,7 +47,7 @@ export const ScannedAssetDetailModal: React.FC<ScannedAssetDetailModalProps> = (
   onNotifyRepair,
   onPrintSticker,
 }) => {
-  const { addRepairRequest, currentUser, settings, getActiveRepairForAsset } = useApp();
+  const { addRepairRequest, currentUser, settings, getActiveRepairForAsset, users } = useApp();
 
   const [showQuickRepairForm, setShowQuickRepairForm] = useState(false);
   const [issueDescription, setIssueDescription] = useState('');
@@ -428,21 +428,38 @@ export const ScannedAssetDetailModal: React.FC<ScannedAssetDetailModalProps> = (
                     <tr>
                       <th className="p-2.5">เลขที่ใบซ่อม</th>
                       <th className="p-2.5">วันที่แจ้ง</th>
+                      <th className="p-2.5">ผู้รับซ่อม (ช่าง)</th>
                       <th className="p-2.5">อาการเสีย</th>
-                      <th className="p-2.5">ค่าซ่อม (บาท)</th>
+                      <th className="p-2.5 text-right">ค่าแรง / ค่าอะไหล่</th>
+                      <th className="p-2.5 text-right">ค่าซ่อมรวม</th>
                       <th className="p-2.5 text-center">สถานะ</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {relatedRepairs.map((rep) => (
-                      <tr key={rep.id} className="hover:bg-slate-50">
-                        <td className="p-2.5 font-bold text-blue-600">{rep.repairNo}</td>
-                        <td className="p-2.5 text-slate-600">{new Date(rep.createdAt).toLocaleDateString('th-TH')}</td>
-                        <td className="p-2.5 text-slate-800">{rep.issueDescription}</td>
-                        <td className="p-2.5 font-semibold">฿{rep.totalCost.toLocaleString()}</td>
-                        <td className="p-2.5 text-center font-bold text-emerald-600">{rep.status}</td>
-                      </tr>
-                    ))}
+                    {relatedRepairs.map((rep) => {
+                      const tech = users.find(u => u.id === rep.technicianId);
+                      return (
+                        <tr key={rep.id} className="hover:bg-slate-50">
+                          <td className="p-2.5 font-bold text-blue-600">{rep.repairNo}</td>
+                          <td className="p-2.5 text-slate-600">{new Date(rep.createdAt).toLocaleDateString('th-TH')}</td>
+                          <td className="p-2.5 font-medium text-slate-800">{tech ? tech.name : (rep.technicianId || 'ยังไม่มอบหมาย')}</td>
+                          <td className="p-2.5 text-slate-800 max-w-[200px] truncate">{rep.issueDescription}</td>
+                          <td className="p-2.5 text-right text-slate-600">
+                            ฿{(rep.laborCost || 0).toLocaleString()} / ฿{(rep.partsCost || 0).toLocaleString()}
+                          </td>
+                          <td className="p-2.5 text-right font-bold text-rose-600">฿{(rep.totalCost || 0).toLocaleString()}</td>
+                          <td className="p-2.5 text-center font-bold">
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] ${
+                              rep.status === 'ซ่อมเสร็จ' || rep.status === 'ปิดงาน' || rep.status === 'ดำเนินการเสร็จ' ? 'bg-emerald-100 text-emerald-800' :
+                              rep.status === 'กำลังดำเนินการ' ? 'bg-blue-100 text-blue-800' :
+                              'bg-amber-100 text-amber-800'
+                            }`}>
+                              {rep.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

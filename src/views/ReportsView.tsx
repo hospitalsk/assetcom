@@ -46,17 +46,27 @@ export const ReportsView: React.FC = () => {
         })
       };
     } else if (selectedReport === 'asset_repair') {
+      const usersList = (window as any).__USERS_CACHE__ || [];
       return {
-        headers: ['ลำดับ', 'เลขที่ใบแจ้งซ่อม', 'ครุภัณฑ์', 'อาการเสีย', 'ค่าใช้จ่าย (บาท)', 'สถานะ'],
-        rows: repairRequests.map((r, i) => {
-          const ast = assets.find(a => a.id === r.assetId);
+        headers: ['ลำดับ', 'รหัสครุภัณฑ์', 'รายการครุภัณฑ์', 'วันที่ได้รับ (อายุใช้งาน)', 'ราคาทุน (บาท)', 'จำนวนครั้งซ่อม', 'ประวัติและรายละเอียดการซ่อมบำรุงทั้งหมด', 'ค่าใช้จ่ายซ่อมสะสมรวม (บาท)'],
+        rows: assets.map((a, i) => {
+          const assetRepairs = repairRequests.filter(r => r.assetId === a.id);
+          const totalCost = assetRepairs.reduce((sum, r) => sum + (r.totalCost || 0), 0);
+          const historyStr = assetRepairs.length > 0
+            ? assetRepairs.map(r => {
+                return `[${r.repairNo}] ${r.issueDescription} (วิธีแก้ไข: ${r.repairMethod || 'ซ่อมแซมบำรุง'}, ค่าใช้จ่าย: ฿${(r.totalCost || 0).toLocaleString()})`;
+              }).join(' | ')
+            : 'ไม่มีประวัติการซ่อม';
+
           return [
             String(i + 1),
-            r.repairNo,
-            ast?.name || '-',
-            r.issueDescription,
-            r.totalCost.toLocaleString(),
-            r.status
+            a.assetCode,
+            `${a.name} (${a.brand || ''} ${a.model || ''})`.trim(),
+            `${a.receivedDate || '-'} (${a.usefulLife || 5} ปี)`,
+            (a.purchasePrice || 0).toLocaleString(),
+            `${assetRepairs.length} ครั้ง`,
+            historyStr,
+            totalCost.toLocaleString()
           ];
         })
       };

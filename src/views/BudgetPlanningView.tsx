@@ -1,292 +1,323 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { FileSpreadsheet, Plus, Printer, TrendingUp, AlertTriangle } from 'lucide-react';
+import { FileSpreadsheet, Printer, Calendar } from 'lucide-react';
 import { PrintDocumentModal } from '../components/PrintDocumentModal';
 
 export const BudgetPlanningView: React.FC = () => {
-  const { budgetPlans, departments, addBudgetPlan, repairRequests, inventoryTransactions, assets, inventoryItems } = useApp();
-  const [showAddModal, setShowAddModal] = useState(false);
+  const { repairRequests, assets, inventoryItems } = useApp();
   
-  // Print modal states
-  const [showMonthlyPrint, setShowMonthlyPrint] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState('2025-03');
+  // Calculate current and previous Thai fiscal year dynamically
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // 1-12
+  
+  const currentFiscalYearInt = currentMonth >= 10 ? currentYear + 1 + 543 : currentYear + 543;
+  const prevFiscalYearInt = currentFiscalYearInt - 1;
 
-  const [showAnnualPrint, setShowAnnualPrint] = useState(false);
-  const [selectedFiscalYear, setSelectedFiscalYear] = useState('2568');
+  // Fiscal year dropdown options: ONLY previous fiscal year and current fiscal year
+  const fiscalYearOptions = [String(prevFiscalYearInt), String(currentFiscalYearInt)];
 
-  const [formData, setFormData] = useState({
-    fiscalYear: '2569',
-    departmentId: departments[0]?.id || '',
-    category: 'ครุภัณฑ์คอมพิวเตอร์' as const,
-    itemName: '',
-    estimatedQty: 1,
-    estimatedUnitPrice: 25000,
-    totalBudget: 25000,
-    priority: 'สูง' as const,
-    justification: '',
-    status: 'ร่างแผน' as const
-  });
-
-  const handleCreatePlan = (e: React.FormEvent) => {
-    e.preventDefault();
-    addBudgetPlan({
-      ...formData,
-      totalBudget: formData.estimatedQty * formData.estimatedUnitPrice
-    });
-    setShowAddModal(false);
+  // Helper to get 12 months (Oct to Sep) for a given Thai Fiscal Year
+  const getFYMonths = (fyThai: number) => {
+    const endYearCE = fyThai - 543;
+    const startYearCE = endYearCE - 1;
+    const months: string[] = [];
+    // Oct, Nov, Dec of startYearCE
+    for (let m = 10; m <= 12; m++) {
+      months.push(`${startYearCE}-${String(m).padStart(2, '0')}`);
+    }
+    // Jan to Sep of endYearCE
+    for (let m = 1; m <= 9; m++) {
+      months.push(`${endYearCE}-${String(m).padStart(2, '0')}`);
+    }
+    return months;
   };
 
-  // CALCULATED PROCUREMENT RECOMMENDATIONS FOR MONTHLY / ANNUAL REPORTS
-  // 1. Assets needing replacement (repair status or old)
-  const calculatedAssetsToReplace = assets.filter(a => a.status === 'กำลังซ่อม' || a.status === 'ชำรุด');
-  
-  // 2. Inventory items needing replenishment (stock <= minQty)
-  const calculatedInventoryToBuy = inventoryItems.filter(i => i.stockQty <= i.minQty);
+  // Month options strictly for previous fiscal year and current fiscal year
+  const monthOptions = [...getFYMonths(prevFiscalYearInt), ...getFYMonths(currentFiscalYearInt)];
+
+  // Print modal states
+  const [showMonthlyPrint, setShowMonthlyPrint] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(monthOptions[monthOptions.length - 1] || '2025-03');
+
+  const [showAnnualPrint, setShowAnnualPrint] = useState(false);
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState(String(currentFiscalYearInt));
+
+  const formatThaiMonthYear = (monthStr: string) => {
+    if (!monthStr) return '';
+    const [year, month] = monthStr.split('-');
+    const monthsThai = [
+      'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+    ];
+    const monthIdx = parseInt(month, 10) - 1;
+    const thaiMonthName = monthsThai[monthIdx] || '';
+    const thaiYear = parseInt(year, 10) + 543;
+    return `${thaiMonthName} ${thaiYear}`;
+  };
+
+  // CALCULATED AUTOMATIC PROCUREMENT NECESSITY ANALYSIS BASED ON COST-EFFECTIVENESS
+  const analyzedAssets = assets.map(asset => {
+    const assetRepairs = repairRequests.filter(r => r.assetId === asset.id);
+    const accumulatedRepairCost = assetRepairs.reduce((sum, r) => sum + (r.totalCost || 0), 0);
+    const purchasePrice = asset.purchasePrice || 0;
+    const repairRatio = purchasePrice > 0 ? (accumulatedRepairCost / purchasePrice) * 100 : 0;
+    
+    const acqDate = asset.receivedDate ? new Date(asset.receivedDate) : new Date();
+    const currentDate = new Date();
+    const ageYears = Math.max(0, Math.floor((currentDate.getTime() - acqDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25)));
+    const usefulLife = asset.usefulLife || 5;
+    
+    const isHighRepairCost = repairRatio >= 50;
+    const isExceededUsefulLife = ageYears >= usefulLife;
+    const isDamaged = asset.status === 'ชำรุด' || asset.status === 'กำลังซ่อม';
+
+    let recommendation = 'อยู่ในเกณฑ์คุ้มค่าที่จะใช้งานต่อ';
+    let isNecessary = false;
+
+    if (isHighRepairCost) {
+      recommendation = `ค่าซ่อมสะสมสูงเกิน 50% ของราคาทุน (${repairRatio.toFixed(1)}%) - ควรจัดซื้อทดแทน`;
+      isNecessary = true;
+    } else if (isExceededUsefulLife) {
+      recommendation = `อายุใช้งาน ${ageYears} ปี เกินเกณฑ์ (${usefulLife} ปี) - สภาพเสื่อมราคา ควรจัดซื้อทดแทน`;
+      isNecessary = true;
+    } else if (isDamaged) {
+      recommendation = `ชำรุดบ่อย/ไม่อยู่ในสภาพพร้อมใช้งาน - ควรจัดหาทดแทน`;
+      isNecessary = true;
+    }
+
+    return {
+      asset,
+      accumulatedRepairCost,
+      purchasePrice,
+      repairRatio,
+      ageYears,
+      usefulLife,
+      recommendation,
+      isNecessary
+    };
+  });
+
+  // Assets that calculated as necessary for replacement
+  const assetsNeedingReplacement = analyzedAssets.filter(item => item.isNecessary);
+
+  // Inventory materials that calculated as needing replenishment
+  const inventoryNeedingReplenishment = inventoryItems.filter(item => item.stockQty <= item.minQty);
+
+  // AUTOMATIC PROCUREMENTS TABLE ITEMS: DERIVED 100% FROM REAL COST-EFFECTIVENESS CALCULATIONS
+  const calculatedProcurementItems = [
+    ...assetsNeedingReplacement.map(item => ({
+      id: `ast-need-${item.asset.id}`,
+      type: 'ครุภัณฑ์' as const,
+      code: item.asset.assetCode,
+      name: item.asset.name,
+      category: 'ครุภัณฑ์',
+      qty: 1,
+      unitPrice: item.purchasePrice || 0,
+      totalCost: item.purchasePrice || 0,
+      reason: item.recommendation,
+      priority: item.repairRatio >= 50 ? 'สูงมาก' : 'สูง'
+    })),
+    ...inventoryNeedingReplenishment.map(item => ({
+      id: `inv-need-${item.id}`,
+      type: 'วัสดุ' as const,
+      code: item.itemCode,
+      name: item.name,
+      category: 'วัสดุสำรองคลัง',
+      qty: Math.max(1, (item.minQty * 2) - item.stockQty),
+      unitPrice: item.unitPrice || 0,
+      totalCost: Math.max(1, (item.minQty * 2) - item.stockQty) * (item.unitPrice || 0),
+      reason: `สต็อกคงเหลือ (${item.stockQty} ${item.unit}) ต่ำกว่าจุดสั่งซื้อ Min (${item.minQty} ${item.unit})`,
+      priority: 'สูง'
+    }))
+  ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-['Sarabun',sans-serif]">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl shadow-xs border border-slate-100">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">ระบบวางแผนงบประมาณและจัดหาพัสดุประจำปี</h2>
           <p className="text-xs text-slate-500 mt-1">
-            วิเคราะห์และคำนวณความจำเป็นในการจัดซื้อจัดจ้างครุภัณฑ์และวัสดุ ตามระเบียบกระทรวงการคลัง พ.ศ. 2560
+            วิเคราะห์และคำนวณความจำเป็นในการจัดซื้อจัดจ้างครุภัณฑ์และวัสดุจากความคุ้มค่าจริง ตามระเบียบกระทรวงการคลัง พ.ศ. 2560
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => setShowMonthlyPrint(true)}
-            className="flex items-center space-x-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-          >
-            <Printer className="w-4 h-4" />
-            <span>พิมพ์รายงานวิเคราะห์ความต้องการพัสดุประจำเดือน</span>
-          </button>
-          <button
-            onClick={() => setShowAnnualPrint(true)}
-            className="flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
-          >
-            <Printer className="w-4 h-4" />
-            <span>พิมพ์แผนจัดหาประจำปีงบประมาณ</span>
-          </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-200"
-          >
-            <Plus className="w-4 h-4" />
-            <span>เพิ่มแผนจัดซื้อพัสดุ</span>
-          </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Month Selector for Monthly Necessity Report */}
+          <div className="flex items-center space-x-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+            <Calendar className="w-4 h-4 text-slate-500 ml-1" />
+            <span className="text-xs font-bold text-slate-700">เลือกเดือน:</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-white border border-slate-200 text-xs font-bold rounded-lg px-2 py-1 outline-none text-slate-800"
+            >
+              {monthOptions.map(m => (
+                <option key={m} value={m}>{formatThaiMonthYear(m)}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setShowMonthlyPrint(true)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>พิมพ์รายงานความจำเป็นประจำเดือน</span>
+            </button>
+          </div>
+
+          {/* Year Selector for Annual Necessity Report */}
+          <div className="flex items-center space-x-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+            <span className="text-xs font-bold text-slate-700 ml-1">เลือกปีงบ:</span>
+            <select
+              value={selectedFiscalYear}
+              onChange={(e) => setSelectedFiscalYear(e.target.value)}
+              className="bg-white border border-slate-200 text-xs font-bold rounded-lg px-2 py-1 outline-none text-slate-800"
+            >
+              {fiscalYearOptions.map(y => (
+                <option key={y} value={y}>พ.ศ. {y}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => setShowAnnualPrint(true)}
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>พิมพ์แผนจัดหาประจำปี</span>
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-xs border border-slate-100 overflow-hidden">
+        <div className="p-4 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center space-x-2">
+            <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+            <span>รายการแผนการจัดซื้อครุภัณฑ์และวัสดุประจำปี</span>
+          </h3>
+          <span className="text-xs text-slate-500 font-medium">คำนวณจากความคุ้มค่าจริง ทั้งหมด {calculatedProcurementItems.length} รายการ</span>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
               <tr>
                 <th className="p-4">ปีงบประมาณ</th>
-                <th className="p-4">รายการพัสดุ / ครุภัณฑ์ที่เสนอขอจัดซื้อ</th>
-                <th className="p-4">หมวดหมู่</th>
+                <th className="p-4">รหัส / รายการครุภัณฑ์และวัสดุที่ต้องจัดซื้อ</th>
+                <th className="p-4">ประเภท</th>
                 <th className="p-4 text-center">จำนวน</th>
-                <th className="p-4 text-right">งบประมาณรวม (บาท)</th>
+                <th className="p-4 text-right">งบประมาณประมาณการ (บาท)</th>
                 <th className="p-4 text-center">ความเร่งด่วน</th>
-                <th className="p-4 text-center">สถานะแผนพัสดุ</th>
+                <th className="p-4">ผลการวิเคราะห์ความคุ้มค่า & เหตุผลจำเป็น</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {budgetPlans.map(plan => (
-                <tr key={plan.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-4 font-bold text-blue-600">{plan.fiscalYear}</td>
+              {calculatedProcurementItems.length > 0 ? calculatedProcurementItems.map((item, idx) => (
+                <tr key={item.id || idx} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4 font-bold text-blue-600">{selectedFiscalYear}</td>
                   <td className="p-4">
-                    <div className="font-bold text-slate-900">{plan.itemName}</div>
-                    <div className="text-[11px] text-slate-500">{plan.justification}</div>
+                    <div className="font-bold text-slate-900">{item.name}</div>
+                    <div className="text-[11px] text-slate-500">รหัส: {item.code}</div>
                   </td>
-                  <td className="p-4 text-slate-700">{plan.category}</td>
-                  <td className="p-4 text-center font-semibold">{plan.estimatedQty}</td>
-                  <td className="p-4 text-right font-bold text-emerald-600">฿{plan.totalBudget.toLocaleString()}</td>
+                  <td className="p-4">
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                      item.type === 'ครุภัณฑ์' ? 'bg-purple-50 text-purple-700 border border-purple-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                    }`}>
+                      {item.category}
+                    </span>
+                  </td>
+                  <td className="p-4 text-center font-bold text-slate-800">{item.qty}</td>
+                  <td className="p-4 text-right font-bold text-emerald-600">฿{item.totalCost.toLocaleString()}</td>
                   <td className="p-4 text-center">
                     <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                      plan.priority === 'สูงมาก' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+                      item.priority === 'สูงมาก' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
                     }`}>
-                      {plan.priority}
+                      {item.priority}
                     </span>
                   </td>
-                  <td className="p-4 text-center">
-                    <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-[10px] font-bold">
-                      {plan.status}
-                    </span>
+                  <td className="p-4 text-slate-700 max-w-xs text-[11px] leading-relaxed">
+                    {item.reason}
                   </td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-slate-400">
+                    ไม่พบพัสดุหรือครุภัณฑ์ที่เข้าเกณฑ์ต้องจัดซื้อทดแทน (ทรัพย์สินทุกรายการอยู่ในเกณฑ์คุ้มค่า)
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Monthly Report Print Modal (Calculated Items needed for next month) */}
+      {/* Monthly Procurement Necessity Analysis Report Print Modal */}
       {showMonthlyPrint && (
         <PrintDocumentModal
-          title={`รายงานการวิเคราะห์ความจำเป็นในการจัดหาพัสดุประจำเดือน (เดือน ${selectedMonth})`}
-          documentNo={`MON-CALC-${selectedMonth}`}
+          title={`รายงานการวิเคราะห์ความจำเป็นในการจัดหาครุภัณฑ์และวัสดุประจำเดือน ${formatThaiMonthYear(selectedMonth)}`}
+          documentNo={`NECESS-ANALYSIS-${selectedMonth}`}
           date={new Date().toLocaleDateString('th-TH')}
-          departmentName="งานพัสดุและบริหารทรัพย์สิน"
+          departmentName="งานพัสดุและบริหารทรัพย์สิน (วิเคราะห์ตามความคุ้มค่าจริง)"
           contentData={[
-            { label: 'วัตถุประสงค์', value: 'รายงานวิเคราะห์คำนวณความจำเป็นต้องจัดซื้อจัดจ้างพัสดุและครุภัณฑ์ทดแทนสำหรับเดือนถัดไป ตามระเบียบกระทรวงการคลังฯ' },
-            { label: 'ประจำเดือน', value: selectedMonth },
-            { label: 'ครุภัณฑ์ที่คำนวณแล้วควรจัดซื้อทดแทน', value: `${calculatedAssetsToReplace.length} รายการ (ชำรุด/ซ่อมบำรุงสูง)` },
-            { label: 'วัสดุที่คำนวณแล้วควรจัดซื้อเติมสต็อก', value: `${calculatedInventoryToBuy.length} รายการ (ต่ำกว่าจุดสั่งซื้อ Min Qty)` }
+            { label: 'วัตถุประสงค์', value: 'วิเคราะห์ความจำเป็นในการจัดซื้อจัดจ้างครุภัณฑ์และวัสดุ จากอัตราการเสื่อมสภาพ ค่าใช้จ่ายในการซ่อมบำรุงสะสม และอายุการใช้งานจริง' },
+            { label: 'ประจำเดือน', value: formatThaiMonthYear(selectedMonth) },
+            { label: 'ครุภัณฑ์ที่มีความจำเป็นต้องจัดหาทดแทน', value: `${assetsNeedingReplacement.length} รายการ (พิจารณาจากค่าซ่อมสะสม > 50% หรือเกินอายุการใช้งาน)` },
+            { label: 'วัสดุที่จำเป็นต้องจัดหาเติมสต็อก', value: `${inventoryNeedingReplenishment.length} รายการ (ต่ำกว่าระดับสำรอง Min Qty)` }
           ]}
           tables={[
             {
-              headers: ['ลำดับ', 'รหัสครุภัณฑ์', 'รายการครุภัณฑ์ที่คำนวณว่าควรจัดซื้อทดแทน', 'สถานะปัจจุบัน', 'ความจำเป็นเร่งด่วน'],
-              rows: calculatedAssetsToReplace.length > 0 ? calculatedAssetsToReplace.map((a, idx) => [
+              headers: ['ลำดับ', 'รหัสครุภัณฑ์', 'รายการครุภัณฑ์', 'ราคาทุน (บาท)', 'อายุใช้งาน (ปี / เกณฑ์)', 'ค่าซ่อมสะสม (บาท)', 'สัดส่วนค่าซ่อม (%)', 'ผลการวิเคราะห์ความคุ้มค่า & ข้อเสนอแนะ'],
+              rows: assetsNeedingReplacement.length > 0 ? assetsNeedingReplacement.map((item, idx) => [
                 String(idx + 1),
-                a.assetCode,
-                a.name,
-                a.status,
-                'สูง (ควรจัดซื้อทดแทนในเดือนถัดไป)'
-              ]) : [['-', '-', 'ไม่มีครุภัณฑ์ที่ต้องจัดซื้อทดแทนในรอบเดือนนี้', '-', '-']]
+                item.asset.assetCode,
+                item.asset.name,
+                `฿${item.purchasePrice.toLocaleString()}`,
+                `${item.ageYears} ปี / เกณฑ์ ${item.usefulLife} ปี`,
+                `฿${item.accumulatedRepairCost.toLocaleString()}`,
+                `${item.repairRatio.toFixed(1)}%`,
+                item.recommendation
+              ]) : [['-', '-', 'ไม่มีครุภัณฑ์ที่ต้องจัดซื้อทดแทนในรอบเดือนนี้ (อยู่ในเกณฑ์คุ้มค่าทั้งหมด)', '-', '-', '-', '-', '-']]
             },
             {
-              headers: ['ลำดับ', 'รหัสวัสดุ', 'รายการวัสดุที่คำนวณว่าควรจัดซื้อเติมสต็อก', 'คงเหลือปัจจุบัน', 'จุดสั่งซื้อ (Min)', 'จำนวนที่ควรจัดซื้อ'],
-              rows: calculatedInventoryToBuy.length > 0 ? calculatedInventoryToBuy.map((i, idx) => [
+              headers: ['ลำดับ', 'รหัสวัสดุ', 'รายการวัสดุสำรองคลัง', 'คงเหลือปัจจุบัน', 'ระดับสำรองขั้นต่ำ (Min)', 'ปริมาณที่เสนอจัดหาเพิ่ม'],
+              rows: inventoryNeedingReplenishment.length > 0 ? inventoryNeedingReplenishment.map((i, idx) => [
                 String(idx + 1),
                 i.itemCode,
                 i.name,
                 `${i.stockQty} ${i.unit}`,
                 `${i.minQty} ${i.unit}`,
-                `ควรจัดซื้อเพิ่ม ${(i.minQty * 2) - i.stockQty} ${i.unit}`
-              ]) : [['-', '-', 'วัสดุทุกรายการอยู่ในเกณฑ์ปกติ', '-', '-', '-']]
+                `เสนอจัดหาเพิ่ม ${Math.max(1, (i.minQty * 2) - i.stockQty)} ${i.unit}`
+              ]) : [['-', '-', 'วัสดุทุกรายการมีปริมาณคงเหลือเพียงพอ', '-', '-', '-']]
             }
           ]}
           onClose={() => setShowMonthlyPrint(false)}
         />
       )}
 
-      {/* Annual Fiscal Year Report Print Modal (Calculated annual procurement plan) */}
+      {/* Annual Fiscal Year Report Print Modal */}
       {showAnnualPrint && (
         <PrintDocumentModal
-          title={`รายงานวิเคราะห์และแผนการจัดหาพัสดุประจำปีงบประมาณ พ.ศ. ${selectedFiscalYear}`}
+          title={`รายงานวิเคราะห์และแผนการจัดหาครุภัณฑ์และวัสดุประจำปีงบประมาณ พ.ศ. ${selectedFiscalYear}`}
           documentNo={`FY-CALC-${selectedFiscalYear}`}
           date={new Date().toLocaleDateString('th-TH')}
           departmentName="กองคลังและพัสดุ (ตามระเบียบกระทรวงการคลังฯ พ.ศ. 2560)"
           contentData={[
             { label: 'ปีงบประมาณ', value: `พ.ศ. ${selectedFiscalYear} (1 ตุลาคม - 30 กันยายน)` },
-            { label: 'เกณฑ์การคำนวณ', value: 'วิเคราะห์จากอัตราการเสื่อมสภาพ, สถิติการซ่อมบำรุง, และอัตราการเบิกใช้วัสดุรายปี' },
-            { label: 'โครงการจัดซื้อจัดจ้างตามแผนประจำปี', value: `${budgetPlans.length} โครงการ` }
+            { label: 'เกณฑ์การคำนวณ', value: 'วิเคราะห์จากอัตราการเสื่อมสภาพ, สถิติการซ่อมบำรุง, และอัตราการเบิกใช้วัสดุรายปีตามความคุ้มค่าจริง' },
+            { label: 'รายการจัดหาตามผลวิเคราะห์ความคุ้มค่า', value: `${calculatedProcurementItems.length} รายการ` }
           ]}
           tables={[
             {
-              headers: ['ลำดับ', 'รายการพัสดุ/ครุภัณฑ์ตามแผนจัดหาประจำปี', 'หมวดหมู่', 'จำนวน', 'งบประมาณรวม (บาท)', 'ความจำเป็นในการจัดซื้อ'],
-              rows: budgetPlans.map((b, idx) => [
+              headers: ['ลำดับ', 'รายการครุภัณฑ์และวัสดุตามแผนจัดหาประจำปี', 'ประเภท', 'จำนวน', 'งบประมาณประมาณการ (บาท)', 'ผลการวิเคราะห์ความจำเป็น & เหตุผล'],
+              rows: calculatedProcurementItems.map((b, idx) => [
                 String(idx + 1),
-                b.itemName,
+                b.name,
                 b.category,
-                String(b.estimatedQty),
-                b.totalBudget.toLocaleString(),
-                b.justification
+                String(b.qty),
+                `฿${b.totalCost.toLocaleString()}`,
+                b.reason
               ])
             }
           ]}
           onClose={() => setShowAnnualPrint(false)}
         />
-      )}
-
-      {/* Add Plan Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
-              <h3 className="text-base font-bold text-slate-900">เพิ่มแผนจัดซื้อพัสดุประจำปี</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 text-lg font-bold">&times;</button>
-            </div>
-            <form onSubmit={handleCreatePlan} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">ปีงบประมาณ</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.fiscalYear}
-                    onChange={(e) => setFormData({ ...formData, fiscalYear: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">ระดับความเร่งด่วน</label>
-                  <select
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="สูงมาก">สูงมาก</option>
-                    <option value="สูง">สูง</option>
-                    <option value="ปานกลาง">ปานกลาง</option>
-                    <option value="ต่ำ">ต่ำ</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">ชื่อรายการพัสดุที่เสนอขอจัดซื้อ</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="เช่น จัดซื้อเครื่องคอมพิวเตอร์แม่ข่ายสำรอง"
-                  value={formData.itemName}
-                  onChange={(e) => setFormData({ ...formData, itemName: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">จำนวน</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={formData.estimatedQty}
-                    onChange={(e) => setFormData({ ...formData, estimatedQty: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">ราคาประมาณการต่อหน่วย</label>
-                  <input
-                    type="number"
-                    required
-                    value={formData.estimatedUnitPrice}
-                    onChange={(e) => setFormData({ ...formData, estimatedUnitPrice: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">เหตุผลความจำเป็น</label>
-                <textarea
-                  rows={3}
-                  required
-                  placeholder="ระบุเหตุผลความจำเป็นในการจัดซื้อตามระเบียบพัสดุฯ..."
-                  value={formData.justification}
-                  onChange={(e) => setFormData({ ...formData, justification: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="flex justify-end space-x-2 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors"
-                >
-                  บันทึกแผนจัดซื้อพัสดุ
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
       )}
     </div>
   );

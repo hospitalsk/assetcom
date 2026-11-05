@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Wrench, Plus, CheckCircle, Clock, AlertTriangle, Smartphone, ListFilter } from 'lucide-react';
 import { RepairStatus } from '../types';
+import { canManageRepairStatus } from '../utils/permissions';
 import { LineOARepairNotifier } from '../components/LineOARepairNotifier';
 
 export const RepairManagementView: React.FC = () => {
-  const { repairRequests, assets, departments, addRepairRequest, updateRepairRequest, currentUser, getActiveRepairForAsset } = useApp();
+  const { repairRequests, assets, departments, addRepairRequest, updateRepairRequest, currentUser, getActiveRepairForAsset, users } = useApp();
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<'table' | 'line_oa'>('table');
   const [lastCreatedRepairId, setLastCreatedRepairId] = useState<string | null>(null);
@@ -59,10 +60,10 @@ export const RepairManagementView: React.FC = () => {
     }
   };
 
-  const isAdminOrIT = currentUser.role === 'Super Admin' || currentUser.role === 'Admin' || currentUser.role === 'IT Officer';
+  const canManage = canManageRepairStatus(currentUser.role);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-['Sarabun',sans-serif]">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl shadow-xs border border-slate-100">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">ระบบแจ้งซ่อมและบริหารจัดการงานซ่อม</h2>
@@ -115,16 +116,18 @@ export const RepairManagementView: React.FC = () => {
                 <th className="p-4">เลขที่ใบแจ้งซ่อม</th>
                 <th className="p-4">ครุภัณฑ์ / รหัส</th>
                 <th className="p-4">ผู้แจ้ง / หน่วยงาน</th>
-                <th className="p-4">อาการเสีย</th>
-                <th className="p-4">ความเร่งด่วน</th>
-                <th className="p-4">ค่าใช้จ่ายรวม (บาท)</th>
+                <th className="p-4">ช่างผู้รับงาน</th>
+                <th className="p-4">อาการเสีย / วิธีซ่อม</th>
+                <th className="p-4 text-right">ค่าใช้จ่ายรวม (บาท)</th>
                 <th className="p-4 text-center">สถานะ</th>
-                {isAdminOrIT && <th className="p-4 text-center">จัดการสถานะ</th>}
+                {canManage && <th className="p-4 text-center">การจัดการ</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {repairRequests.map(rep => {
                 const asset = assets.find(a => a.id === rep.assetId);
+                const reporter = users.find(u => u.id === rep.reporterId) || { name: currentUser.name };
+                const technician = users.find(u => u.id === rep.technicianId);
                 const dept = departments.find(d => d.id === rep.departmentId);
                 return (
                   <tr key={rep.id} className="hover:bg-slate-50 transition-colors">
@@ -134,19 +137,26 @@ export const RepairManagementView: React.FC = () => {
                       <div className="text-[11px] text-slate-500">{asset?.assetCode}</div>
                     </td>
                     <td className="p-4">
-                      <div className="font-semibold text-slate-800">{currentUser.name}</div>
+                      <div className="font-semibold text-slate-800">{reporter.name}</div>
                       <div className="text-[11px] text-slate-500">{dept?.name}</div>
                     </td>
-                    <td className="p-4 text-slate-700 max-w-xs truncate">{rep.issueDescription}</td>
                     <td className="p-4">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                        rep.urgency === 'ด่วนมาก / ฉุกเฉิน' ? 'bg-rose-100 text-rose-700' :
-                        rep.urgency === 'ด่วน' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {rep.urgency}
+                      <span className="font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                        {technician ? technician.name : 'ยังไม่ระบุช่าง'}
                       </span>
                     </td>
-                    <td className="p-4 font-semibold">฿{rep.totalCost.toLocaleString()}</td>
+                    <td className="p-4 text-slate-700 max-w-xs">
+                      <div className="font-medium text-slate-900 truncate">{rep.issueDescription}</div>
+                      {rep.repairMethod && (
+                        <div className="text-[10px] text-blue-600 truncate mt-0.5">วิธีซ่อม: {rep.repairMethod}</div>
+                      )}
+                    </td>
+                    <td className="p-4 text-right font-bold text-emerald-700 font-mono">
+                      ฿{(rep.totalCost || 0).toLocaleString()}
+                      {rep.laborCost > 0 && (
+                        <div className="text-[10px] text-slate-400 font-normal">ค่าแรง ฿{rep.laborCost.toLocaleString()} + อะไหล่ ฿{(rep.partsCost || 0).toLocaleString()}</div>
+                      )}
+                    </td>
                     <td className="p-4 text-center">
                       <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                         rep.status === 'ซ่อมเสร็จ' || rep.status === 'ปิดงาน' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
@@ -156,23 +166,16 @@ export const RepairManagementView: React.FC = () => {
                         {rep.status}
                       </span>
                     </td>
-                    {isAdminOrIT && (
+                    {canManage && (
                       <td className="p-4 text-center">
-                        <select
-                          value={rep.status}
-                          onChange={(e) => updateRepairRequest(rep.id, { status: e.target.value as RepairStatus })}
-                          className="px-2 py-1 text-xs rounded-lg border border-slate-200 bg-white font-bold text-blue-600"
+                        <button
+                          onClick={() => {
+                            setActiveSubTab('line_oa');
+                          }}
+                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
                         >
-                          <option value="รอรับเรื่อง">รอรับเรื่อง</option>
-                          <option value="รอตรวจสอบ">รอตรวจสอบ</option>
-                          <option value="รอดำเนินการ">รอดำเนินการ</option>
-                          <option value="กำลังดำเนินการ">กำลังดำเนินการ</option>
-                          <option value="ส่งซ่อมภายนอก">ส่งซ่อมภายนอก</option>
-                          <option value="รออะไหล่">รออะไหล่</option>
-                          <option value="ซ่อมเสร็จ">ซ่อมเสร็จ</option>
-                          <option value="ดำเนินการเสร็จ">ดำเนินการเสร็จ</option>
-                          <option value="ปิดงาน">ปิดงาน</option>
-                        </select>
+                          ✏️ แก้ไข/ใส่ค่าซ่อม
+                        </button>
                       </td>
                     )}
                   </tr>

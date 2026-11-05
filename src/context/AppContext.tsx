@@ -82,7 +82,7 @@ interface AppContextType {
   addInventoryItem: (item: Omit<InventoryItem, 'id'>) => void;
   updateInventoryItem: (id: string, item: Partial<InventoryItem>) => void;
   deleteInventoryItem: (id: string) => void;
-  processInventoryTransaction: (itemId: string, type: 'รับเข้าสต็อก' | 'เบิกวัสดุ' | 'ปรับปรุงยอด', qty: number, unitPrice?: number, departmentId?: string, notes?: string) => void;
+  processInventoryTransaction: (itemId: string, type: 'รับเข้าสต็อก' | 'เบิกวัสดุ' | 'ปรับปรุงยอด', qty: number, unitPrice?: number, departmentId?: string, notes?: string, newMinQty?: number) => void;
 
   addBorrowRequest: (req: Omit<BorrowRequest, 'id' | 'requestNo' | 'createdAt' | 'status'>) => void;
   updateBorrowStatus: (id: string, status: BorrowRequest['status']) => void;
@@ -357,7 +357,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     qty: number, 
     unitPrice?: number, 
     departmentId?: string, 
-    notes?: string
+    notes?: string,
+    newMinQty?: number
   ) => {
     const item = inventoryItems.find(i => i.id === itemId);
     if (!item) return;
@@ -382,6 +383,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...item,
       stockQty: newQty,
       unitPrice: finalUnitPrice,
+      minQty: (type === 'รับเข้าสต็อก' && newMinQty !== undefined && newMinQty >= 0) ? newMinQty : item.minQty,
       lastReceivedDate: type === 'รับเข้าสต็อก' ? new Date().toISOString().split('T')[0] : item.lastReceivedDate
     };
 
@@ -454,30 +456,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...reqData,
       id: generateUniqueId('rep'),
       repairNo: `REP-${new Date().getFullYear() + 543}-${Math.floor(100 + Math.random() * 900)}`,
-      status: 'รอรับเรื่อง',
+      status: 'รอตรวจสอบ', // Requires Approver approval first before alerting LINE OA
       totalCost,
       createdAt: new Date().toISOString()
     };
     setRepairRequests(prev => [newRep, ...prev]);
     syncRepairRequestToSupabase(newRep);
     updateAsset(newRep.assetId, { status: 'กำลังซ่อม' });
-    addAuditLog('REPAIR', 'Repair Management', newRep.id, `แจ้งซ่อมครุภัณฑ์เลขที่ ${newRep.repairNo}`);
+    addAuditLog('REPAIR', 'Repair Management', newRep.id, `ยื่นใบแจ้งซ่อมครุภัณฑ์เลขที่ ${newRep.repairNo} (รอ Approver อนุมัติ)`);
 
-    // Trigger Real LINE OA API Dispatch
     const targetAsset = assets.find(a => a.id === newRep.assetId);
-    const reporter = users.find(u => u.id === newRep.reporterId);
-    const dept = departments.find(d => d.id === newRep.departmentId);
 
-    dispatchLineOaNotification(
-      settings,
-      newRep,
-      targetAsset?.name || 'ครุภัณฑ์',
-      targetAsset?.assetCode || '-',
-      reporter?.name || currentUser.name,
-      dept?.name || 'กลุ่มงานทั่วไป'
+    // Notify Approver(s) for approval requirement
+    addNotification(
+      'คำขอแจ้งซ่อมรอการอนุมัติ', 
+      `สร้างใบแจ้งซ่อม ${newRep.repairNo} (${targetAsset?.name || 'ครุภัณฑ์'}) เรียบร้อยแล้ว (รอผู้มีอำนาจ Approver กดอนุมัติก่อนส่ง LINE OA ไปยังช่าง)`, 
+      'warning', 
+      'repair'
     );
-
-    addNotification('ส่งแจ้งเตือน LINE OA เรียบร้อย', `สร้างใบแจ้งซ่อม ${newRep.repairNo} และส่งการแจ้งเตือนไปยัง LINE OA (${settings.lineOaBasicId || '@sangkhla_repair_bot'}) เรียบร้อยแล้ว`, 'success', 'repair');
     return newRep;
   };
 
@@ -490,6 +486,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const finalized = { ...merged, totalCost };
         
         syncRepairRequestToSupabase(finalized);
+
+        // If status transitions from 'รอตรวจสอบ' (Pending Approval) to 'รอรับเรื่อง' / 'กำลังดำเนินการ' (Approved)
+        if (r.status === 'รอตรวจสอบ' && (finalized.status === 'รอรับเรื่อง' || finalized.status === 'กำลังดำเนินการ')) {
+          const targetAsset = assets.find(a => a.id === finalized.assetId);
+          const reporter = users.find(u => u.id === finalized.reporterId);
+          const dept = departments.find(d => d.id === finalized.departmentId);
+
+          dispatchLineOaNotification(
+            settings,
+            finalized,
+            targetAsset?.name || 'ครุภัณฑ์',
+            targetAsset?.assetCode || '-',
+            reporter?.name || currentUser.name,
+            dept?.name || 'กลุ่มงานทั่วไป'
+          );
+
+          addNotification(
+            'อนุมัติคำขอแจ้งซ่อมแล้ว', 
+            `ใบแจ้งซ่อม ${finalized.repairNo} ได้รับการอนุมัติเรียบร้อยแล้ว และระบบได้ส่งสัญญาณแจ้งเตือนไปยัง LINE OA ของช่างแล้ว`, 
+            'success', 
+            'repair'
+          );
+        }
 
         if (finalized.status === 'ซ่อมเสร็จ' || finalized.status === 'ปิดงาน' || finalized.status === 'ดำเนินการเสร็จ') {
           updateAsset(finalized.assetId, { status: 'พร้อมใช้งาน' });
@@ -723,6 +742,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const resetToDefaultData = () => {
+    const roleClean = (currentUser?.role || '').toLowerCase().trim();
+    if (roleClean !== 'admin' && !roleClean.includes('admin')) {
+      alert('⚠️ สิทธิ์ไม่เพียงพอ! ปุ่มรีเซ็ตข้อมูลสามารถใช้ได้โดยผู้ดูแลระบบ (Admin) เท่านั้น');
+      return;
+    }
     if (window.confirm('คุณต้องการรีเซ็ตข้อมูลทั้งหมดกลับเป็นค่าเริ่มต้นหรือไม่?')) {
       localStorage.clear();
       sessionStorage.clear();

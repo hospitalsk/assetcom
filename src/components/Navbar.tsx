@@ -27,11 +27,27 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
   const [showSupabaseModal, setShowSupabaseModal] = useState(false);
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const isAdminUser = (currentUser.role || '').toLowerCase().includes('admin');
+  const isGeneralUser = (currentUser.role || '').toLowerCase().includes('general') || currentUser.role === 'เจ้าหน้าที่ทั่วไป';
+
+  // General users cannot see system-level notifications
+  const visibleNotifications = notifications.filter(notif => {
+    if (isGeneralUser) {
+      const isSystemNotif = notif.linkModule === 'settings' || 
+                            notif.title.includes('ระบบ') || 
+                            notif.title.includes('Supabase') || 
+                            notif.title.includes('LINE') ||
+                            notif.title.includes('ตั้งค่า');
+      return !isSystemNotif;
+    }
+    return true;
+  });
+
+  const unreadCount = visibleNotifications.filter(n => !n.isRead).length;
 
   return (
     <>
-      <header className="bg-white border-b border-slate-200 h-16 px-3 sm:px-4 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+      <header className="bg-white border-b border-slate-200 h-16 px-3 sm:px-4 flex items-center justify-between sticky top-0 z-30 shadow-xs font-['Sarabun',sans-serif]">
         {/* Left: Mobile Menu Toggle + Brand / Logo / Title */}
         <div className="flex items-center space-x-2 sm:space-x-3">
           <button
@@ -70,14 +86,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
             <span>Supabase Ready</span>
           </button>
 
-          <button
-            onClick={resetToDefaultData}
-            className="hidden xl:flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
-            title="รีเซ็ตข้อมูลเริ่มต้น"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>รีเซ็ตข้อมูล</span>
-          </button>
+          {/* Reset button only accessible for Admin */}
+          {isAdminUser && (
+            <button
+              onClick={resetToDefaultData}
+              className="hidden xl:flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+              title="รีเซ็ตข้อมูลเริ่มต้น (เฉพาะ Admin)"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>รีเซ็ตข้อมูล</span>
+            </button>
+          )}
 
           {/* Notifications Dropdown */}
           <div className="relative">
@@ -96,16 +115,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleSidebar }) => {
             {showNotifDropdown && (
               <div className="absolute right-0 mt-2 w-72 sm:w-80 md:w-96 bg-white rounded-2xl shadow-xl border border-slate-100 py-3 z-50 animate-in fade-in slide-in-from-top-2">
                 <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
-                  <span className="font-bold text-sm text-slate-800">การแจ้งเตือนระบบ</span>
+                  <span className="font-bold text-sm text-slate-800">การแจ้งเตือน</span>
                   <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-semibold">
                     {unreadCount} ใหม่
                   </span>
                 </div>
                 <div className="max-h-80 overflow-y-auto divide-y divide-slate-50">
-                  {notifications.length === 0 ? (
+                  {visibleNotifications.length === 0 ? (
                     <div className="p-6 text-center text-slate-400 text-sm">ไม่มีการแจ้งเตือน</div>
                   ) : (
-                    notifications.map(notif => (
+                    visibleNotifications.map(notif => (
                       <div 
                         key={notif.id}
                         onClick={() => {
