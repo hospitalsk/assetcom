@@ -1,14 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Wrench, Plus, CheckCircle, Clock, AlertTriangle, Smartphone, ListFilter } from 'lucide-react';
-import { RepairStatus } from '../types';
-import { canManageRepairStatus } from '../utils/permissions';
+import { Wrench, Plus, AlertTriangle } from 'lucide-react';
 import { LineOARepairNotifier } from '../components/LineOARepairNotifier';
 
 export const RepairManagementView: React.FC = () => {
-  const { repairRequests, assets, departments, addRepairRequest, updateRepairRequest, currentUser, getActiveRepairForAsset, users } = useApp();
+  const { repairRequests, assets, departments, addRepairRequest, currentUser, getActiveRepairForAsset } = useApp();
   const [showAddModal, setShowAddModal] = useState(false);
-  const [activeSubTab, setActiveSubTab] = useState<'table' | 'line_oa'>('table');
   const [lastCreatedRepairId, setLastCreatedRepairId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
@@ -42,7 +39,6 @@ export const RepairManagementView: React.FC = () => {
       const created = addRepairRequest(formData);
       setShowAddModal(false);
       setLastCreatedRepairId(created.id);
-      setActiveSubTab('line_oa');
       setFormData({
         assetId: assets[0]?.id || '',
         reporterId: currentUser.id,
@@ -60,21 +56,20 @@ export const RepairManagementView: React.FC = () => {
     }
   };
 
-  const canManage = canManageRepairStatus(currentUser.role);
-
   return (
     <div className="space-y-6 font-['Sarabun',sans-serif]">
+      {/* View Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl shadow-xs border border-slate-100">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">ระบบแจ้งซ่อมและบริหารจัดการงานซ่อม</h2>
           <p className="text-xs text-slate-500 mt-1">
-            ติดตามสถานะการแจ้งซ่อม ค่าใช้จ่ายอะไหล่ และระบบแจ้งเตือน/รับงานผ่าน LINE OA
+            ติดตามรายการแจ้งซ่อม (รายการล่าสุดอยู่ข้างบนเสมอ) ค่าใช้จ่ายซ่อมบำรุง และระบบแจ้งเตือน LINE OA
           </p>
         </div>
         <div className="flex items-center space-x-2">
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center space-x-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-200"
+            className="flex items-center space-x-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-200 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>แจ้งซ่อมครุภัณฑ์</span>
@@ -82,118 +77,16 @@ export const RepairManagementView: React.FC = () => {
         </div>
       </div>
 
-      {/* Subtab Switcher */}
-      <div className="flex items-center space-x-2 bg-white p-2 rounded-2xl border border-slate-100 shadow-xs w-fit">
-        <button
-          onClick={() => setActiveSubTab('table')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeSubTab === 'table' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <ListFilter className="w-4 h-4" />
-          <span>ตารางรายการแจ้งซ่อม</span>
-        </button>
-        <button
-          onClick={() => setActiveSubTab('line_oa')}
-          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeSubTab === 'line_oa' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Smartphone className="w-4 h-4 text-emerald-500" />
-          <span>📲 LINE OA แจ้งเตือนและรับงานช่าง</span>
-        </button>
-      </div>
+      {/* Main Repair Cards Feed (With Stats, Sorting, Admin Restrictions, & User Filters) */}
+      <LineOARepairNotifier highlightRepairId={lastCreatedRepairId} />
 
-      {activeSubTab === 'line_oa' ? (
-        <LineOARepairNotifier highlightRepairId={lastCreatedRepairId} />
-      ) : (
-
-      <div className="bg-white rounded-2xl shadow-xs border border-slate-100 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
-              <tr>
-                <th className="p-4">เลขที่ใบแจ้งซ่อม</th>
-                <th className="p-4">ครุภัณฑ์ / รหัส</th>
-                <th className="p-4">ผู้แจ้ง / หน่วยงาน</th>
-                <th className="p-4">ช่างผู้รับงาน</th>
-                <th className="p-4">อาการเสีย / วิธีซ่อม</th>
-                <th className="p-4 text-right">ค่าใช้จ่ายรวม (บาท)</th>
-                <th className="p-4 text-center">สถานะ</th>
-                {canManage && <th className="p-4 text-center">การจัดการ</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {repairRequests.map(rep => {
-                const asset = assets.find(a => a.id === rep.assetId);
-                const reporter = users.find(u => u.id === rep.reporterId) || { name: currentUser.name };
-                const technician = users.find(u => u.id === rep.technicianId);
-                const dept = departments.find(d => d.id === rep.departmentId);
-                return (
-                  <tr key={rep.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-4 font-bold text-blue-600">{rep.repairNo}</td>
-                    <td className="p-4">
-                      <div className="font-bold text-slate-900">{asset?.name || 'ครุภัณฑ์'}</div>
-                      <div className="text-[11px] text-slate-500">{asset?.assetCode}</div>
-                    </td>
-                    <td className="p-4">
-                      <div className="font-semibold text-slate-800">{reporter.name}</div>
-                      <div className="text-[11px] text-slate-500">{dept?.name}</div>
-                    </td>
-                    <td className="p-4">
-                      <span className="font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
-                        {technician ? technician.name : 'ยังไม่ระบุช่าง'}
-                      </span>
-                    </td>
-                    <td className="p-4 text-slate-700 max-w-xs">
-                      <div className="font-medium text-slate-900 truncate">{rep.issueDescription}</div>
-                      {rep.repairMethod && (
-                        <div className="text-[10px] text-blue-600 truncate mt-0.5">วิธีซ่อม: {rep.repairMethod}</div>
-                      )}
-                    </td>
-                    <td className="p-4 text-right font-bold text-emerald-700 font-mono">
-                      ฿{(rep.totalCost || 0).toLocaleString()}
-                      {rep.laborCost > 0 && (
-                        <div className="text-[10px] text-slate-400 font-normal">ค่าแรง ฿{rep.laborCost.toLocaleString()} + อะไหล่ ฿{(rep.partsCost || 0).toLocaleString()}</div>
-                      )}
-                    </td>
-                    <td className="p-4 text-center">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        rep.status === 'ซ่อมเสร็จ' || rep.status === 'ปิดงาน' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                        rep.status === 'กำลังดำเนินการ' ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                        'bg-amber-50 text-amber-700 border border-amber-200'
-                      }`}>
-                        {rep.status}
-                      </span>
-                    </td>
-                    {canManage && (
-                      <td className="p-4 text-center">
-                        <button
-                          onClick={() => {
-                            setActiveSubTab('line_oa');
-                          }}
-                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                        >
-                          ✏️ แก้ไข/ใส่ค่าซ่อม
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      )}
-
-      {/* Add Repair Modal with logged-in user and department selection */}
+      {/* Add Repair Request Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-['Sarabun',sans-serif]">
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
               <h3 className="text-base font-bold text-slate-900">แจ้งซ่อมครุภัณฑ์</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">&times;</button>
             </div>
             <form onSubmit={handleCreateRepair} className="space-y-4">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
@@ -271,14 +164,14 @@ export const RepairManagementView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
                   disabled={!!selectedActiveRepair}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     selectedActiveRepair
                       ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
                       : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-200'

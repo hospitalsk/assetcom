@@ -8,15 +8,15 @@ import {
   AlertTriangle, 
   DollarSign, 
   TrendingUp, 
-  Boxes,
   ArrowLeftRight,
   FileSpreadsheet,
   QrCode,
   BarChart3,
-  ArrowRight,
   Zap,
-  Clock,
-  ChevronRight
+  ChevronRight,
+  ShieldCheck,
+  Activity,
+  Coins
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
@@ -29,25 +29,44 @@ export const DashboardView: React.FC = () => {
     inventoryItems, 
     repairRequests, 
     borrowRequests, 
-    budgetPlans, 
     departments, 
     assetCategories, 
     setActiveTab, 
     currentUser 
   } = useApp();
 
-  // Metric Calculations
+  // Core Metric Calculations
   const totalAssets = assets.length;
   const activeAssets = assets.filter(a => a.status === 'พร้อมใช้งาน' || a.status === 'กำลังใช้งาน').length;
   const repairingAssets = assets.filter(a => a.status === 'กำลังซ่อม' || a.status === 'ชำรุด').length;
   const borrowedAssets = assets.filter(a => a.status === 'ยืมใช้งาน').length;
-  
+  const availableAssets = assets.filter(a => a.status === 'ว่าง').length;
+
+  // Availability Ratio %
+  const availabilityRatio = totalAssets > 0 ? ((activeAssets / totalAssets) * 100).toFixed(1) : '100';
+
+  // Repair Metrics
+  const totalRepairsCount = repairRequests.length;
+  const completedRepairsCount = repairRequests.filter(r => r.status === 'ซ่อมเสร็จ' || r.status === 'ปิดงาน' || r.status === 'ดำเนินการเสร็จ').length;
   const pendingRepairs = repairRequests.filter(r => r.status !== 'ซ่อมเสร็จ' && r.status !== 'ปิดงาน' && r.status !== 'ดำเนินการเสร็จ').length;
+  const repairSuccessRate = totalRepairsCount > 0 ? ((completedRepairsCount / totalRepairsCount) * 100).toFixed(1) : '100';
+  const totalRepairExpense = repairRequests.reduce((sum, r) => sum + (r.totalCost || 0), 0);
+
+  // Borrow Metrics
   const pendingBorrows = borrowRequests.filter(b => b.status === 'ยืมใช้งาน' || b.status === 'รออนุมัติ' || b.status === 'รอตรวจสอบ').length;
 
+  // Inventory Metrics
   const totalInventoryValue = inventoryItems.reduce((sum, item) => sum + (item.stockQty * item.unitPrice), 0);
+  const lowStockItems = inventoryItems.filter(i => i.stockQty <= i.minQty);
+
+  // Asset Valuation & Expiry
   const totalAssetPrice = assets.reduce((sum, a) => sum + a.purchasePrice, 0);
-  
+  const expiredAssetsCount = assets.filter(a => {
+    const acqYear = a.receivedDate ? new Date(a.receivedDate).getFullYear() : new Date().getFullYear();
+    const ageYears = Math.max(0, new Date().getFullYear() - acqYear);
+    return ageYears >= (a.usefulLife || 5);
+  }).length;
+
   const totalDepreciation = assets.reduce((sum, a) => {
     const acqYear = a.receivedDate ? new Date(a.receivedDate).getFullYear() : new Date().getFullYear();
     const ageYears = Math.max(0, new Date().getFullYear() - acqYear);
@@ -56,28 +75,19 @@ export const DashboardView: React.FC = () => {
     return sum + Math.min(a.purchasePrice - (a.salvageValue || 1), annualDep * ageYears);
   }, 0);
 
-  const lowStockItems = inventoryItems.filter(i => i.stockQty <= i.minQty);
-
-  // Asset Status Donut Chart Data
+  // Donut Chart Data
   const statusColors = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444'];
   const statusPieData = [
     { name: 'พร้อมใช้งาน', value: activeAssets },
     { name: 'ยืมใช้งาน', value: borrowedAssets },
     { name: 'ชำรุด/กำลังซ่อม', value: repairingAssets },
-    { name: 'ว่าง/สำรอง', value: assets.filter(a => a.status === 'ว่าง').length },
+    { name: 'ว่าง/สำรอง', value: availableAssets },
   ].filter(d => d.value > 0);
 
   // Category chart data
   const categoryData = assetCategories.map(cat => ({
     name: cat.name.split(' ')[0],
     count: assets.filter(a => a.categoryId === cat.id).length
-  }));
-
-  // Department distribution
-  const deptData = departments.map(d => ({
-    name: d.code,
-    fullName: d.name,
-    count: assets.filter(a => a.departmentId === d.id).length
   }));
 
   return (
@@ -87,13 +97,13 @@ export const DashboardView: React.FC = () => {
         <div className="space-y-2 z-10 max-w-2xl">
           <div className="inline-flex items-center space-x-2 bg-blue-500/20 px-3 py-1 rounded-full text-xs font-bold border border-blue-400/30 text-blue-200">
             <Zap className="w-3.5 h-3.5 text-blue-400" />
-            <span>Smart Asset Management & Analytics Dashboard</span>
+            <span>Smart Asset Analytics Dashboard</span>
           </div>
           <h2 className="text-xl sm:text-3xl font-black tracking-tight">
-            ระบบสารสนเทศทะเบียนครุภัณฑ์ คลังวัสดุ และงานซ่อมบำรุง
+            ภาพรวมระบบบริหารจัดการทรัพย์สินและงานซ่อม
           </h2>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            ยินดีต้อนรับคุณ <span className="text-white font-bold underline underline-offset-2">{currentUser.name}</span> ({currentUser.role}) — ติดตามสถานะทรัพย์สิน ตรวจสอบความคุ้มค่า และวางแผนงบประมาณประจำปี
+            ยินดีต้อนรับคุณ <span className="text-white font-bold underline underline-offset-2">{currentUser.name}</span> ({currentUser.role}) — สรุปดัชนีชี้วัดความพร้อมใช้งาน ค่าเสื่อมราคา และแผนพัสดุประจำปี
           </p>
         </div>
 
@@ -123,218 +133,218 @@ export const DashboardView: React.FC = () => {
         </div>
       </div>
 
-      {/* Interactive Clickable KPI Summary Cards (8 Cards) */}
+      {/* SECTION 1: Key High-Impact Metrics (4 Highlights - Clean, Concise, Non-cluttered) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Assets */}
+        {/* KPI 1: Availability Rate */}
         <div 
           onClick={() => setActiveTab('assets')}
-          className="bg-white p-5 rounded-3xl shadow-xs border border-slate-200/80 hover:border-blue-500 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between space-y-3 relative overflow-hidden"
+          className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-emerald-500 hover:shadow-lg transition-all cursor-pointer group flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <div className="p-3 rounded-2xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-              <Monitor className="w-6 h-6" />
+            <span className="text-xs font-bold text-slate-500">อัตราความพร้อมใช้งาน</span>
+            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+              <ShieldCheck className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-extrabold text-blue-600 bg-blue-50 group-hover:bg-blue-100 px-2.5 py-1 rounded-full flex items-center space-x-1">
-              <span>ทะเบียนครุภัณฑ์</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
           </div>
-          <div>
-            <p className="text-xs font-bold text-slate-500">จำนวนครุภัณฑ์ทั้งหมด</p>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <h3 className="text-2xl font-black text-slate-900">{totalAssets}</h3>
-              <span className="text-xs font-bold text-slate-500">รายการ</span>
+          <div className="mt-3">
+            <div className="flex items-baseline space-x-1.5">
+              <span className="text-3xl font-black text-emerald-600">{availabilityRatio}%</span>
+              <span className="text-xs text-slate-400 font-bold">Uptime</span>
             </div>
-            <p className="text-[11px] text-emerald-600 font-semibold mt-1">พร้อมใช้งาน {activeAssets} รายการ</p>
-          </div>
-        </div>
-
-        {/* Card 2: Repair Jobs */}
-        <div 
-          onClick={() => setActiveTab('repair')}
-          className="bg-white p-5 rounded-3xl shadow-xs border border-slate-200/80 hover:border-rose-500 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between space-y-3 relative overflow-hidden"
-        >
-          <div className="flex items-center justify-between">
-            <div className={`p-3 rounded-2xl ${pendingRepairs > 0 ? 'bg-rose-50 text-rose-600 group-hover:bg-rose-600' : 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600'} group-hover:text-white transition-colors`}>
-              <Wrench className="w-6 h-6" />
-            </div>
-            <span className={`text-[10px] font-extrabold ${pendingRepairs > 0 ? 'text-rose-600 bg-rose-50 group-hover:bg-rose-100' : 'text-emerald-600 bg-emerald-50'} px-2.5 py-1 rounded-full flex items-center space-x-1`}>
-              <span>งานแจ้งซ่อม</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
-          </div>
-          <div>
-            <p className="text-xs font-bold text-slate-500">งานซ่อมที่รอดำเนินการ</p>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <h3 className={`text-2xl font-black ${pendingRepairs > 0 ? 'text-rose-600' : 'text-slate-900'}`}>{pendingRepairs}</h3>
-              <span className="text-xs font-bold text-slate-500">รายการ</span>
-            </div>
-            <p className="text-[11px] text-rose-500 font-semibold mt-1">
-              {pendingRepairs > 0 ? '⚠️ ต้องติดตามช่างผู้รับงาน' : '✅ ไม่มีงานซ่อมค้าง'}
+            <p className="text-[11px] text-slate-500 mt-1 font-medium truncate">
+              พร้อมใช้งาน {activeAssets} จาก {totalAssets} ชิ้น
             </p>
           </div>
         </div>
 
-        {/* Card 3: Inventory Low Stock */}
+        {/* KPI 2: Repair Success Rate */}
         <div 
-          onClick={() => setActiveTab('inventory')}
-          className="bg-white p-5 rounded-3xl shadow-xs border border-slate-200/80 hover:border-emerald-500 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between space-y-3 relative overflow-hidden"
+          onClick={() => setActiveTab('repair')}
+          className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-blue-500 hover:shadow-lg transition-all cursor-pointer group flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <div className={`p-3 rounded-2xl ${lowStockItems.length > 0 ? 'bg-amber-50 text-amber-600 group-hover:bg-amber-600' : 'bg-teal-50 text-teal-600 group-hover:bg-teal-600'} group-hover:text-white transition-colors`}>
-              <Package className="w-6 h-6" />
+            <span className="text-xs font-bold text-slate-500">อัตราซ่อมเสร็จสิ้น</span>
+            <div className="p-2 bg-blue-50 text-blue-600 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition-colors">
+              <Activity className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-extrabold text-teal-600 bg-teal-50 group-hover:bg-teal-100 px-2.5 py-1 rounded-full flex items-center space-x-1">
-              <span>คลังวัสดุ IT</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
           </div>
-          <div>
-            <p className="text-xs font-bold text-slate-500">วัสดุเตือนใกล้หมด (Min Qty)</p>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <h3 className={`text-2xl font-black ${lowStockItems.length > 0 ? 'text-amber-600' : 'text-slate-900'}`}>{lowStockItems.length}</h3>
-              <span className="text-xs font-bold text-slate-500">รายการ</span>
+          <div className="mt-3">
+            <div className="flex items-baseline space-x-1.5">
+              <span className="text-3xl font-black text-blue-600">{repairSuccessRate}%</span>
+              <span className="text-xs text-slate-400 font-bold">Success</span>
             </div>
-            <p className="text-[11px] text-teal-600 font-semibold mt-1">มูลค่าคลังรวม ฿{totalInventoryValue.toLocaleString()}</p>
+            <p className="text-[11px] text-slate-500 mt-1 font-medium truncate">
+              งานซ่อมเสร็จ {completedRepairsCount} / รอดำเนินการ {pendingRepairs} รายการ
+            </p>
           </div>
         </div>
 
-        {/* Card 4: Borrow & Return */}
-        <div 
-          onClick={() => setActiveTab('borrow')}
-          className="bg-white p-5 rounded-3xl shadow-xs border border-slate-200/80 hover:border-indigo-500 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between space-y-3 relative overflow-hidden"
-        >
-          <div className="flex items-center justify-between">
-            <div className="p-3 rounded-2xl bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-              <ArrowLeftRight className="w-6 h-6" />
-            </div>
-            <span className="text-[10px] font-extrabold text-indigo-600 bg-indigo-50 group-hover:bg-indigo-100 px-2.5 py-1 rounded-full flex items-center space-x-1">
-              <span>ยืม - คืนพัสดุ</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
-          </div>
-          <div>
-            <p className="text-xs font-bold text-slate-500">คำขอยืมครุภัณฑ์ค้างส่ง</p>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <h3 className="text-2xl font-black text-slate-900">{pendingBorrows}</h3>
-              <span className="text-xs font-bold text-slate-500">รายการ</span>
-            </div>
-            <p className="text-[11px] text-indigo-600 font-semibold mt-1">กำลังยืมใช้งาน {borrowedAssets} ชิ้น</p>
-          </div>
-        </div>
-
-        {/* Card 5: Depreciation & Valuation */}
-        <div 
-          onClick={() => setActiveTab('depreciation')}
-          className="bg-white p-5 rounded-3xl shadow-xs border border-slate-200/80 hover:border-purple-500 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between space-y-3 relative overflow-hidden"
-        >
-          <div className="flex items-center justify-between">
-            <div className="p-3 rounded-2xl bg-purple-50 text-purple-600 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-              <TrendingUp className="w-6 h-6" />
-            </div>
-            <span className="text-[10px] font-extrabold text-purple-600 bg-purple-50 group-hover:bg-purple-100 px-2.5 py-1 rounded-full flex items-center space-x-1">
-              <span>มูลค่า & ค่าเสื่อม</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
-          </div>
-          <div>
-            <p className="text-xs font-bold text-slate-500">ราคาทุนจัดซื้อครุภัณฑ์รวม</p>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <h3 className="text-xl font-black text-slate-900">฿{totalAssetPrice.toLocaleString()}</h3>
-            </div>
-            <p className="text-[11px] text-purple-600 font-semibold mt-1">ค่าเสื่อมสะสม ฿{totalDepreciation.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
-          </div>
-        </div>
-
-        {/* Card 6: Budget Planning */}
+        {/* KPI 3: Accumulated Repair Cost */}
         <div 
           onClick={() => setActiveTab('budget')}
-          className="bg-white p-5 rounded-3xl shadow-xs border border-slate-200/80 hover:border-blue-600 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between space-y-3 relative overflow-hidden"
+          className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-amber-500 hover:shadow-lg transition-all cursor-pointer group flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <div className="p-3 rounded-2xl bg-blue-50 text-blue-700 group-hover:bg-blue-700 group-hover:text-white transition-colors">
-              <FileSpreadsheet className="w-6 h-6" />
+            <span className="text-xs font-bold text-slate-500">ค่าซ่อมบำรุงสะสมรวม</span>
+            <div className="p-2 bg-amber-50 text-amber-600 rounded-xl group-hover:bg-amber-600 group-hover:text-white transition-colors">
+              <Coins className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-extrabold text-blue-700 bg-blue-50 group-hover:bg-blue-100 px-2.5 py-1 rounded-full flex items-center space-x-1">
-              <span>แผนงบประมาณ</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
           </div>
-          <div>
-            <p className="text-xs font-bold text-slate-500">แผนวิเคราะห์จัดซื้อประจำปี</p>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <h3 className="text-2xl font-black text-slate-900">{repairingAssets + lowStockItems.length}</h3>
-              <span className="text-xs font-bold text-slate-500">รายการจำเป็น</span>
+          <div className="mt-3">
+            <div className="flex items-baseline space-x-1.5">
+              <span className="text-2xl font-black text-amber-600 font-mono">฿{totalRepairExpense.toLocaleString()}</span>
             </div>
-            <p className="text-[11px] text-blue-700 font-semibold mt-1">วิเคราะห์จากความคุ้มค่าจริง</p>
+            <p className="text-[11px] text-slate-500 mt-1 font-medium truncate">
+              ครุภัณฑ์เสื่อมตามเกณฑ์ {expiredAssetsCount} ชิ้น
+            </p>
           </div>
         </div>
 
-        {/* Card 7: Official Reports */}
+        {/* KPI 4: Low Stock Alert */}
         <div 
-          onClick={() => setActiveTab('reports')}
-          className="bg-white p-5 rounded-3xl shadow-xs border border-slate-200/80 hover:border-emerald-600 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between space-y-3 relative overflow-hidden"
+          onClick={() => setActiveTab('inventory')}
+          className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs hover:border-rose-500 hover:shadow-lg transition-all cursor-pointer group flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
-            <div className="p-3 rounded-2xl bg-emerald-50 text-emerald-700 group-hover:bg-emerald-700 group-hover:text-white transition-colors">
-              <BarChart3 className="w-6 h-6" />
+            <span className="text-xs font-bold text-slate-500">วัสดุต้องสั่งซื้อเพิ่ม</span>
+            <div className="p-2 bg-rose-50 text-rose-600 rounded-xl group-hover:bg-rose-600 group-hover:text-white transition-colors">
+              <AlertTriangle className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 group-hover:bg-emerald-100 px-2.5 py-1 rounded-full flex items-center space-x-1">
-              <span>รายงานระเบียบฯ</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
           </div>
-          <div>
-            <p className="text-xs font-bold text-slate-500">พิมพ์รายงานระเบียบพัสดุฯ</p>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <h3 className="text-2xl font-black text-slate-900">4</h3>
-              <span className="text-xs font-bold text-slate-500">รูปแบบรายงาน</span>
+          <div className="mt-3">
+            <div className="flex items-baseline space-x-1.5">
+              <span className="text-3xl font-black text-rose-600">{lowStockItems.length}</span>
+              <span className="text-xs text-slate-400 font-bold">รายการ</span>
             </div>
-            <p className="text-[11px] text-emerald-700 font-semibold mt-1">ระเบียบกระทรวงการคลัง พ.ศ. 2560</p>
-          </div>
-        </div>
-
-        {/* Card 8: QR Code Scanner */}
-        <div 
-          onClick={() => setActiveTab('qrcode')}
-          className="bg-white p-5 rounded-3xl shadow-xs border border-slate-200/80 hover:border-slate-800 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between space-y-3 relative overflow-hidden"
-        >
-          <div className="flex items-center justify-between">
-            <div className="p-3 rounded-2xl bg-slate-100 text-slate-800 group-hover:bg-slate-900 group-hover:text-white transition-colors">
-              <QrCode className="w-6 h-6" />
-            </div>
-            <span className="text-[10px] font-extrabold text-slate-800 bg-slate-100 group-hover:bg-slate-200 px-2.5 py-1 rounded-full flex items-center space-x-1">
-              <span>สแกนเนอร์</span>
-              <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-            </span>
-          </div>
-          <div>
-            <p className="text-xs font-bold text-slate-500">สแกน QR Code ครุภัณฑ์</p>
-            <div className="flex items-baseline space-x-2 mt-1">
-              <h3 className="text-xl font-black text-slate-900">สแกน/พิมพ์</h3>
-            </div>
-            <p className="text-[11px] text-slate-600 font-semibold mt-1">พิมพ์สติกเกอร์ QR Code ติดครุภัณฑ์</p>
+            <p className="text-[11px] text-slate-500 mt-1 font-medium truncate">
+              ต่ำกว่าจุดสั่งซื้อ Min Qty
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Analytics Charts & Status Overview */}
+      {/* SECTION 2: Interactive Module Quick Navigation Cards (Clean 6 Cards) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* Module 1: Asset Management */}
+        <div 
+          onClick={() => setActiveTab('assets')}
+          className="bg-white p-5 rounded-3xl border border-slate-200/80 hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group flex items-center justify-between"
+        >
+          <div className="flex items-center space-x-3.5">
+            <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl group-hover:bg-blue-600 group-hover:text-white transition-colors">
+              <Monitor className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900">ทะเบียนครุภัณฑ์</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">รวม {totalAssets} รายการ (฿{totalAssetPrice.toLocaleString()})</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+        </div>
+
+        {/* Module 2: Repair Management */}
+        <div 
+          onClick={() => setActiveTab('repair')}
+          className="bg-white p-5 rounded-3xl border border-slate-200/80 hover:border-rose-500 hover:shadow-md transition-all cursor-pointer group flex items-center justify-between"
+        >
+          <div className="flex items-center space-x-3.5">
+            <div className="p-3 bg-rose-50 text-rose-600 rounded-2xl group-hover:bg-rose-600 group-hover:text-white transition-colors">
+              <Wrench className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900">งานแจ้งซ่อม & LINE OA</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">รอดำเนินการ {pendingRepairs} รายการ</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-rose-600 group-hover:translate-x-1 transition-all" />
+        </div>
+
+        {/* Module 3: Inventory */}
+        <div 
+          onClick={() => setActiveTab('inventory')}
+          className="bg-white p-5 rounded-3xl border border-slate-200/80 hover:border-teal-500 hover:shadow-md transition-all cursor-pointer group flex items-center justify-between"
+        >
+          <div className="flex items-center space-x-3.5">
+            <div className="p-3 bg-teal-50 text-teal-600 rounded-2xl group-hover:bg-teal-600 group-hover:text-white transition-colors">
+              <Package className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900">คลังวัสดุ IT</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">มูลค่ารวม ฿{totalInventoryValue.toLocaleString()}</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-teal-600 group-hover:translate-x-1 transition-all" />
+        </div>
+
+        {/* Module 4: Borrow & Return */}
+        <div 
+          onClick={() => setActiveTab('borrow')}
+          className="bg-white p-5 rounded-3xl border border-slate-200/80 hover:border-indigo-500 hover:shadow-md transition-all cursor-pointer group flex items-center justify-between"
+        >
+          <div className="flex items-center space-x-3.5">
+            <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+              <ArrowLeftRight className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900">ยืม - คืนพัสดุ</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">กำลังยืมใช้งาน {borrowedAssets} ชิ้น</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
+        </div>
+
+        {/* Module 5: Budget Planning */}
+        <div 
+          onClick={() => setActiveTab('budget')}
+          className="bg-white p-5 rounded-3xl border border-slate-200/80 hover:border-blue-600 hover:shadow-md transition-all cursor-pointer group flex items-center justify-between"
+        >
+          <div className="flex items-center space-x-3.5">
+            <div className="p-3 bg-blue-50 text-blue-700 rounded-2xl group-hover:bg-blue-700 group-hover:text-white transition-colors">
+              <FileSpreadsheet className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900">วางแผนงบประมาณประจำปี</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">วิเคราะห์จากความคุ้มค่าจริง</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-700 group-hover:translate-x-1 transition-all" />
+        </div>
+
+        {/* Module 6: Official Reports */}
+        <div 
+          onClick={() => setActiveTab('reports')}
+          className="bg-white p-5 rounded-3xl border border-slate-200/80 hover:border-purple-600 hover:shadow-md transition-all cursor-pointer group flex items-center justify-between"
+        >
+          <div className="flex items-center space-x-3.5">
+            <div className="p-3 bg-purple-50 text-purple-600 rounded-2xl group-hover:bg-purple-600 group-hover:text-white transition-colors">
+              <BarChart3 className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-900">รายงานระเบียบพัสดุฯ 2560</h4>
+              <p className="text-[11px] text-slate-500 mt-0.5">พิมพ์รายงานการจัดซื้อจัดจ้าง</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-1 transition-all" />
+        </div>
+      </div>
+
+      {/* SECTION 3: Visual Analytics Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chart 1: Asset Category Bar Chart */}
         <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-xs border border-slate-100 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">จำนวนครุภัณฑ์แยกตามหมวดหมู่</h3>
-              <p className="text-[11px] text-slate-500">สถิติจำนวนครุภัณฑ์ในแต่ประเภทตามทะเบียนพัสดุ</p>
+              <h3 className="text-sm font-bold text-slate-900">จำนวนครุภัณฑ์จำแนกตามหมวดหมู่</h3>
+              <p className="text-[11px] text-slate-500">สถิติครุภัณฑ์ในแต่ละหมวดหมู่ตามทะเบียนพัสดุ</p>
             </div>
             <button 
               onClick={() => setActiveTab('assets')}
               className="text-xs text-blue-600 font-bold hover:underline cursor-pointer"
             >
-              ดูรายละเอียด →
+              ดูทั้งหมด →
             </button>
           </div>
-          <div className="h-72">
+          <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={categoryData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -354,15 +364,15 @@ export const DashboardView: React.FC = () => {
             <p className="text-[11px] text-slate-500">จำแนกตามสภาพความพร้อมใช้งาน</p>
           </div>
           
-          <div className="h-52 flex items-center justify-center">
+          <div className="h-48 flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={statusPieData}
                   cx="50%"
                   cy="50%"
-                  innerRadius={50}
-                  outerRadius={75}
+                  innerRadius={45}
+                  outerRadius={70}
                   paddingAngle={5}
                   dataKey="value"
                 >

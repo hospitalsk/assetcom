@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Wrench, CheckCircle2, AlertCircle, Send, Smartphone, User, Monitor, Check, DollarSign, Edit, Plus, Trash2, Shield } from 'lucide-react';
+import { Wrench, CheckCircle2, AlertCircle, Send, Smartphone, User, Monitor, Check, DollarSign, Edit, Plus, Trash2, Calendar, TrendingUp } from 'lucide-react';
 import { RepairStatus, RepairRequest } from '../types';
 import { canManageRepairStatus } from '../utils/permissions';
 
@@ -14,6 +14,15 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
   const [successToast, setSuccessToast] = useState<string | null>(null);
 
   const canManage = canManageRepairStatus(currentUser.role);
+  const roleClean = (currentUser.role || '').toLowerCase().trim();
+  const isAdmin = roleClean === 'admin' || roleClean === 'super admin' || roleClean.includes('admin');
+
+  // General user view restriction: power users see all, normal users see only their own repairs
+  const isPowerUser = canManage || 
+                      roleClean.includes('approver') || 
+                      roleClean.includes('head') || 
+                      roleClean.includes('supply') || 
+                      roleClean.includes('auditor');
 
   // Edit Repair Details Modal State
   const [editingRepair, setEditingRepair] = useState<RepairRequest | null>(null);
@@ -29,6 +38,44 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
   const [newPartName, setNewPartName] = useState('');
   const [newPartQty, setNewPartQty] = useState(1);
   const [newPartPrice, setNewPartPrice] = useState(0);
+
+  // 1. Sort repairs latest first (descending order by createdAt)
+  const sortedRepairs = [...repairRequests].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  // 2. Filter for General User (only own repair requests)
+  const userScopedRepairs = isPowerUser 
+    ? sortedRepairs 
+    : sortedRepairs.filter(r => r.reporterId === currentUser.id);
+
+  // 3. Filter by selected status tab
+  const filteredRequests = userScopedRepairs.filter(req => {
+    if (selectedStatusFilter === 'all') return true;
+    if (selectedStatusFilter === 'pending') return req.status === 'รอรับเรื่อง' || req.status === 'รอตรวจสอบ' || req.status === 'รอดำเนินการ';
+    if (selectedStatusFilter === 'in_progress') return req.status === 'กำลังดำเนินการ' || req.status === 'รออะไหล่' || req.status === 'ส่งซ่อมภายนอก';
+    if (selectedStatusFilter === 'completed') return req.status === 'ซ่อมเสร็จ' || req.status === 'ดำเนินการเสร็จ' || req.status === 'ปิดงาน';
+    return true;
+  });
+
+  // Calculate Monthly & Yearly Maintenance Costs
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+
+  const monthlyCost = userScopedRepairs.reduce((sum, r) => {
+    const d = new Date(r.createdAt);
+    if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+      return sum + (r.totalCost || 0);
+    }
+    return sum;
+  }, 0);
+
+  const yearlyCost = userScopedRepairs.reduce((sum, r) => {
+    const d = new Date(r.createdAt);
+    if (d.getFullYear() === currentYear) {
+      return sum + (r.totalCost || 0);
+    }
+    return sum;
+  }, 0);
 
   const handleOpenEditModal = (rep: RepairRequest) => {
     setEditingRepair(rep);
@@ -112,17 +159,6 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
     setTimeout(() => setSuccessToast(null), 4000);
   };
 
-  const filteredRequests = repairRequests.filter(req => {
-    if (selectedStatusFilter === 'all') return true;
-    if (selectedStatusFilter === 'pending') return req.status === 'รอรับเรื่อง' || req.status === 'รอตรวจสอบ' || req.status === 'รอดำเนินการ';
-    if (selectedStatusFilter === 'in_progress') return req.status === 'กำลังดำเนินการ' || req.status === 'รออะไหล่' || req.status === 'ส่งซ่อมภายนอก';
-    if (selectedStatusFilter === 'completed') return req.status === 'ซ่อมเสร็จ' || req.status === 'ดำเนินการเสร็จ' || req.status === 'ปิดงาน';
-    return true;
-  });
-
-  // Technician list filter
-  const techniciansList = users.filter(u => u.role === 'IT Officer' || u.role === 'Admin' || u.role === 'Super Admin' || u.role.includes('ช่าง') || u.role.includes('Technician') || u.role.includes('IT'));
-
   const canApprove = currentUser.role === 'Approver' || 
                      currentUser.role === 'Department Head' || 
                      currentUser.role === 'Admin' || 
@@ -139,7 +175,7 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
         <div className="p-4 bg-emerald-600 text-white rounded-2xl text-xs font-black flex items-center justify-between shadow-xl animate-bounce">
           <div className="flex items-center space-x-2">
             <Smartphone className="w-5 h-5 text-emerald-200 shrink-0" />
-            <span>📲 ยื่นใบแจ้งซ่อมเรียบร้อยแล้ว (รอ Approver อนุมัติเพื่อส่งการแจ้งเตือนเข้า LINE OA)</span>
+            <span>📲 ยื่นใบแจ้งซ่อมเรียบร้อยแล้ว (รายการซ่อมล่าสุดอยู่ด้านบนสุด)</span>
           </div>
           <span className="bg-white text-emerald-800 px-3 py-1 rounded-xl text-[11px]">LINE OA Live Feed</span>
         </div>
@@ -152,42 +188,73 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
         </div>
       )}
 
-      {/* Header banner */}
-      <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="space-y-2 text-center md:text-left">
-          <div className="inline-flex items-center space-x-2 bg-white/20 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md">
-            <Smartphone className="w-4 h-4 text-emerald-200" />
-            <span>LINE Official Account ({settings.lineOaBasicId || '@sangkhla_repair_bot'})</span>
+      {/* Monthly & Yearly Maintenance Cost Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex items-center space-x-4">
+          <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 shrink-0">
+            <Calendar className="w-6 h-6" />
           </div>
-          <h2 className="text-xl sm:text-2xl font-black tracking-tight">
-            ระบบแจ้งเตือน อนุมัติการแจ้งซ่อม และบันทึกงานช่าง
-          </h2>
-          <p className="text-xs sm:text-sm text-emerald-100 max-w-2xl">
-            เมื่อยื่นใบแจ้งซ่อม ระบบจะรอให้ผู้มีอำนาจ (Approver) กดอนุมัติก่อน จึงจะส่งการแจ้งเตือนเข้า LINE OA ของช่างเพื่อรับงาน
-          </p>
-
-          <div className="flex flex-wrap items-center gap-2 pt-2">
-            <a
-              href={`https://line.me/R/ti/p/${(settings.lineOaBasicId || '@sangkhla_repair_bot').replace('@', '')}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-3 py-1.5 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-black transition-all shadow-md inline-flex items-center space-x-1"
-            >
-              <span>💬 เพิ่มเพื่อน LINE OA ({settings.lineOaBasicId || '@sangkhla_repair_bot'})</span>
-            </a>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className="px-3 py-1.5 bg-emerald-800/60 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all border border-emerald-400/30 cursor-pointer"
-            >
-              ⚙️ ตั้งค่า Token & ตรวจสอบ Live API Log
-            </button>
+          <div>
+            <div className="text-xs font-bold text-slate-500">ค่าซ่อมบำรุงต่อเดือน (ประจำเดือนนี้)</div>
+            <div className="text-xl font-extrabold text-slate-900 mt-0.5 font-mono">
+              ฿{monthlyCost.toLocaleString()}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">รวมค่าแรงและอะไหล่ประจำเดือนปัจจุบัน</div>
           </div>
         </div>
-        <div className="bg-white/10 p-4 rounded-2xl border border-white/20 text-center backdrop-blur-md shrink-0">
-          <div className="text-2xl font-black">{repairRequests.filter(r => r.status === 'รอตรวจสอบ').length}</div>
-          <div className="text-[11px] text-amber-200 font-semibold">งานซ่อมรอ Approver อนุมัติ</div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-xs flex items-center space-x-4">
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-100 shrink-0">
+            <TrendingUp className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-slate-500">ค่าซ่อมบำรุงต่อปี (ประจำปีนี้)</div>
+            <div className="text-xl font-extrabold text-slate-900 mt-0.5 font-mono">
+              ฿{yearlyCost.toLocaleString()}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">สะสมรวมค่าซ่อมบำรุงตลอดทั้งปี</div>
+          </div>
         </div>
       </div>
+
+      {/* LINE OA Admin Banner - ONLY visible to user:admin */}
+      {isAdmin && (
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white p-6 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="space-y-2 text-center md:text-left">
+            <div className="inline-flex items-center space-x-2 bg-white/20 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md">
+              <Smartphone className="w-4 h-4 text-emerald-200" />
+              <span>LINE Official Account (@765satuz)</span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight">
+              ระบบตั้งค่า LINE Official Account และรับงานซ่อม (@765satuz)
+            </h2>
+            <p className="text-xs sm:text-sm text-emerald-100 max-w-2xl">
+              (เฉพาะผู้ดูแลระบบ user:admin) เมื่อยื่นใบแจ้งซ่อม ระบบจะรอให้ Approver อนุมัติ แล้วส่งการแจ้งเตือนเข้า LINE OA ของช่างเพื่อรับงานทันที
+            </p>
+
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <a
+                href="https://line.me/R/ti/p/@765satuz"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 bg-white text-emerald-800 hover:bg-emerald-50 rounded-xl text-xs font-black transition-all shadow-md inline-flex items-center space-x-1"
+              >
+                <span>💬 ปุ่มเพิ่มเพื่อน LINE Official Account (@765satuz)</span>
+              </a>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className="px-3 py-1.5 bg-emerald-800/60 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all border border-emerald-400/30 cursor-pointer"
+              >
+                ⚙️ ปุ่มตั้งค่า Token & Webhook LINE OA
+              </button>
+            </div>
+          </div>
+          <div className="bg-white/10 p-4 rounded-2xl border border-white/20 text-center backdrop-blur-md shrink-0">
+            <div className="text-2xl font-black">{userScopedRepairs.filter(r => r.status === 'รอตรวจสอบ').length}</div>
+            <div className="text-[11px] text-amber-200 font-semibold">งานซ่อมรอ Approver อนุมัติ</div>
+          </div>
+        </div>
+      )}
 
       {/* Filter Tabs */}
       <div className="flex flex-wrap items-center gap-2 bg-white p-3 rounded-2xl border border-slate-100 shadow-xs">
@@ -195,29 +262,29 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
           onClick={() => setSelectedStatusFilter('all')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedStatusFilter === 'all' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
         >
-          ทั้งหมด ({repairRequests.length})
+          ทั้งหมด ({userScopedRepairs.length})
         </button>
         <button
           onClick={() => setSelectedStatusFilter('pending')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedStatusFilter === 'pending' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
         >
-          รอ Approver อนุมัติ / รอช่างรับเรื่อง ({repairRequests.filter(r => r.status === 'รอรับเรื่อง' || r.status === 'รอตรวจสอบ' || r.status === 'รอดำเนินการ').length})
+          รอ Approver อนุมัติ / รอช่างรับเรื่อง ({userScopedRepairs.filter(r => r.status === 'รอรับเรื่อง' || r.status === 'รอตรวจสอบ' || r.status === 'รอดำเนินการ').length})
         </button>
         <button
           onClick={() => setSelectedStatusFilter('in_progress')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedStatusFilter === 'in_progress' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
         >
-          กำลังดำเนินการ ({repairRequests.filter(r => r.status === 'กำลังดำเนินการ' || r.status === 'รออะไหล่').length})
+          กำลังดำเนินการ ({userScopedRepairs.filter(r => r.status === 'กำลังดำเนินการ' || r.status === 'รออะไหล่').length})
         </button>
         <button
           onClick={() => setSelectedStatusFilter('completed')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${selectedStatusFilter === 'completed' ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
         >
-          ซ่อมเสร็จ/ปิดงาน ({repairRequests.filter(r => r.status === 'ซ่อมเสร็จ' || r.status === 'ปิดงาน').length})
+          ซ่อมเสร็จ/ปิดงาน ({userScopedRepairs.filter(r => r.status === 'ซ่อมเสร็จ' || r.status === 'ปิดงาน').length})
         </button>
       </div>
 
-      {/* LINE OA Chat Simulator Cards Feed */}
+      {/* LINE OA Chat Simulator Cards Feed - Latest Repair First */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredRequests.map(rep => {
           const asset = assets.find(a => a.id === rep.assetId);
@@ -229,14 +296,14 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
 
           return (
             <div key={rep.id} className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden flex flex-col transition-all hover:shadow-2xl">
-              {/* LINE Header */}
+              {/* LINE Card Header */}
               <div className="bg-[#00B900] px-4 py-3 text-white flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <div className="w-8 h-8 rounded-full bg-white text-[#00B900] flex items-center justify-center font-black text-xs shadow-md">
                     LINE
                   </div>
                   <div>
-                    <div className="text-xs font-bold">แจ้งเตือนระบบซ่อมบำรุง (LINE OA)</div>
+                    <div className="text-xs font-bold">แจ้งซ่อมครุภัณฑ์ (@765satuz)</div>
                     <div className="text-[10px] text-emerald-100">{new Date(rep.createdAt).toLocaleString('th-TH')}</div>
                   </div>
                 </div>
@@ -249,7 +316,7 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
                 </span>
               </div>
 
-              {/* LINE Flex Message Body */}
+              {/* Card Content Body */}
               <div className="p-5 space-y-4 flex-1 bg-slate-50/50">
                 <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -288,7 +355,7 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
                     </div>
                     <div className="flex items-center justify-between text-[11px] pt-1 border-t border-blue-100">
                       <span className="text-slate-600">ค่าซ่อมรวมทั้งสิ้น:</span>
-                      <span className="font-black text-emerald-700 text-xs">฿{(rep.totalCost || 0).toLocaleString()}</span>
+                      <span className="font-black text-emerald-700 text-xs font-mono">฿{(rep.totalCost || 0).toLocaleString()}</span>
                     </div>
                     {rep.spareParts && rep.spareParts.length > 0 && (
                       <div className="text-[10px] text-slate-500 pt-0.5">
@@ -325,10 +392,10 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
                 </div>
               </div>
 
-              {/* LINE Flex Message Action Buttons */}
+              {/* Action Buttons */}
               <div className="p-4 bg-white border-t border-slate-200 space-y-2">
                 <div className="text-[11px] font-bold text-slate-400 text-center mb-1">
-                  {isNeedsApproval ? 'ขั้นตอนการอนุมัติการแจ้งซ่อม:' : canManage ? 'เมนูปุ่มกดสำหรับช่างใน LINE OA:' : 'สถานะงานซ่อมปัจจุบัน:'}
+                  {isNeedsApproval ? 'ขั้นตอนการอนุมัติ:' : canManage ? 'การจัดการสำหรับช่าง/ผู้ดูแลระบบ:' : 'สถานะงานซ่อมปัจจุบัน:'}
                 </div>
                 
                 {/* Approval Step requirement */}
@@ -337,7 +404,7 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
                     <button
                       onClick={() => {
                         updateRepairRequest(rep.id, { status: 'รอรับเรื่อง' });
-                        setSuccessToast(`✅ อนุมัติการแจ้งซ่อม ${rep.repairNo} เรียบร้อยแล้ว! ระบบได้ส่งแจ้งเตือนไปยัง LINE OA ของช่างแล้ว`);
+                        setSuccessToast(`✅ อนุมัติการแจ้งซ่อม ${rep.repairNo} เรียบร้อยแล้ว! ระบบได้ส่งแจ้งเตือนไปยัง LINE OA (@765satuz) ของช่างแล้ว`);
                         setTimeout(() => setSuccessToast(null), 5000);
                       }}
                       className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all transform active:scale-95 cursor-pointer animate-pulse"
@@ -417,8 +484,8 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
       {filteredRequests.length === 0 && (
         <div className="bg-white p-12 text-center rounded-3xl border border-slate-100 shadow-xs space-y-3">
           <Wrench className="w-12 h-12 text-slate-300 mx-auto" />
-          <div className="text-sm font-bold text-slate-700">ไม่พบรายการแจ้งซ่อมในระบบ</div>
-          <p className="text-xs text-slate-400">เมื่อมีการแจ้งซ่อมครุภัณฑ์ ระบบจะส่งการแจ้งเตือนไปยัง LINE OA ของช่างโดยอัตโนมัติทันที</p>
+          <div className="text-sm font-bold text-slate-700">ไม่พบรายการแจ้งซ่อม</div>
+          <p className="text-xs text-slate-400">เมื่อมีการแจ้งซ่อมครุภัณฑ์ รายการซ่อมล่าสุดจะแสดงด้านบนเสมอ</p>
         </div>
       )}
 

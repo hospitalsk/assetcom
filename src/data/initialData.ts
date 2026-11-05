@@ -484,7 +484,7 @@ export const defaultSystemSettings: SystemSettings = {
   approverPosition: 'ผู้อำนวยการโรงพยาบาลสังขละบุรี',
   lineOaChannelAccessToken: 'eyJhbGciOiJIUzI1NiJ9.eyJjaGFubmVsSWQiOiIyMDA2NTQzMjEwIn0.SK_HOSPITAL_LINE_OA_TOKEN',
   lineOaChannelSecret: '8a91c0e392b4f5718a2910c4d29381ea',
-  lineOaBasicId: '@sangkhla_repair_bot',
+  lineOaBasicId: '@765satuz',
   lineOaWebhookUrl: 'https://ais-dev-ngnwk27rcrrjxtrwkcr3lu-843482220752.asia-east1.run.app/api/line/webhook',
   lineOaEnabled: true,
 };

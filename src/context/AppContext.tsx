@@ -404,6 +404,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setInventoryTransactions(prev => [trx, ...prev]);
     addAuditLog('DISPENSE', 'IT Inventory', trx.id, `${type}วัสดุ ${item.name} จำนวน ${qty} ${item.unit}`);
 
+    if (type === 'เบิกวัสดุ') {
+      const deptName = departments.find(d => d.id === (departmentId || currentUser.departmentId))?.name || 'กลุ่มงานทั่วไป';
+      addNotification(
+        'แจ้งเตือนเบิกวัสดุ (ส่งถึง IT)',
+        `ผู้เบิก: ${currentUser.name} | แผนก: ${deptName} | วัสดุ: ${item.name} (${item.itemCode}) | จำนวน: ${qty} ${item.unit}`,
+        'info',
+        'inventory'
+      );
+    }
+
     if (newQty <= item.minQty) {
       addNotification('วัสดุใกล้หมดสต็อก', `วัสดุ ${item.name} (${item.itemCode}) คงเหลือ ${newQty} ${item.unit}`, 'warning', 'inventory');
     }

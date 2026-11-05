@@ -1,13 +1,32 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Package, Plus, Search, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Package, Plus, Search, CheckCircle, AlertTriangle, UserCheck, MapPin, Building2 } from 'lucide-react';
 
 export const InventoryManagementView: React.FC = () => {
-  const { inventoryItems, inventoryCategories, inventoryTransactions, addInventoryItem, processInventoryTransaction, departments, currentUser } = useApp();
+  const { 
+    inventoryItems, 
+    inventoryCategories, 
+    inventoryTransactions, 
+    addInventoryItem, 
+    processInventoryTransaction, 
+    departments, 
+    currentUser, 
+    assetLocations 
+  } = useApp();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showTrxModal, setShowTrxModal] = useState<{ item: any; type: 'รับเข้าสต็อก' | 'เบิกวัสดุ' | 'ปรับปรุงยอด' } | null>(null);
+
+  // Role permission: Only Admin, Super Admin, Supply Officer, IT Officer can receive inventory or add new items
+  const roleClean = (currentUser.role || '').toLowerCase().trim();
+  const canReceiveInventory = roleClean.includes('admin') || 
+                              roleClean.includes('supply') || 
+                              roleClean.includes('it') ||
+                              roleClean === 'super admin' ||
+                              roleClean === 'admin' ||
+                              roleClean === 'supply officer' ||
+                              roleClean === 'it officer';
 
   // New item form
   const [newItem, setNewItem] = useState({
@@ -18,7 +37,7 @@ export const InventoryManagementView: React.FC = () => {
     unitPrice: 100,
     stockQty: 10,
     minQty: 5,
-    location: 'คลังพัสดุ IT',
+    location: assetLocations[0] || 'คลังพัสดุ IT ชั้น 3',
     supplier: '',
     notes: ''
   });
@@ -37,6 +56,10 @@ export const InventoryManagementView: React.FC = () => {
 
   const handleCreateItem = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canReceiveInventory) {
+      alert('⚠️ สิทธิ์ไม่เพียงพอ! เฉพาะ user: admin, user: supply officer, และ user: IT officer เท่านั้นที่สามารถรับเข้าวัสดุได้');
+      return;
+    }
     addInventoryItem({
       ...newItem,
       lastReceivedDate: new Date().toISOString().split('T')[0]
@@ -50,7 +73,7 @@ export const InventoryManagementView: React.FC = () => {
       unitPrice: 100,
       stockQty: 10,
       minQty: 5,
-      location: 'คลังพัสดุ IT',
+      location: assetLocations[0] || 'คลังพัสดุ IT ชั้น 3',
       supplier: '',
       notes: ''
     });
@@ -59,6 +82,11 @@ export const InventoryManagementView: React.FC = () => {
   const handleProcessTrx = (e: React.FormEvent) => {
     e.preventDefault();
     if (!showTrxModal) return;
+
+    if (showTrxModal.type === 'รับเข้าสต็อก' && !canReceiveInventory) {
+      alert('⚠️ สิทธิ์ไม่เพียงพอ! เฉพาะ user: admin, user: supply officer, และ user: IT officer เท่านั้นที่สามารถรับเข้าวัสดุได้');
+      return;
+    }
     
     processInventoryTransaction(
       showTrxModal.item.id, 
@@ -76,21 +104,23 @@ export const InventoryManagementView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-['Sarabun',sans-serif]">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl shadow-xs border border-slate-100">
         <div>
           <h2 className="text-xl font-bold text-slate-900 tracking-tight">ระบบจัดการวัสดุคอมพิวเตอร์และอะไหล่</h2>
           <p className="text-xs text-slate-500 mt-1">
-            ควบคุมสต็อกพัสดุ หมึกพิมพ์ เมาส์ สาย LAN และอะไหล่ พร้อมระบบ Transaction ตรวจสอบย้อนหลัง
+            รับเข้าพัสดุโดย Admin/Supply/IT • เบิกวัสดุได้ทุกผู้ใช้งาน พร้อมแจ้งเตือน IT ทันทีที่มีการเบิก
           </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center space-x-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-200"
-        >
-          <Plus className="w-4 h-4" />
-          <span>เพิ่มรายการวัสดุใหม่</span>
-        </button>
+        {canReceiveInventory && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center space-x-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-200 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>เพิ่มรายการวัสดุใหม่ (รับเข้า)</span>
+          </button>
+        )}
       </div>
 
       {/* Search & Low Stock Warning */}
@@ -118,7 +148,7 @@ export const InventoryManagementView: React.FC = () => {
             <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
               <tr>
                 <th className="p-4">รหัสวัสดุ</th>
-                <th className="p-4">ชื่อวัสดุ / รายละเอียด</th>
+                <th className="p-4">ชื่อวัสดุ / ผู้จำหน่าย</th>
                 <th className="p-4 text-center">คงเหลือ</th>
                 <th className="p-4 text-center">จุดสั่งซื้อ (Min)</th>
                 <th className="p-4">ราคาต่อหน่วย</th>
@@ -134,7 +164,9 @@ export const InventoryManagementView: React.FC = () => {
                     <td className="p-4 font-bold text-blue-600">{item.itemCode}</td>
                     <td className="p-4">
                       <div className="font-bold text-slate-900">{item.name}</div>
-                      <div className="text-[11px] text-slate-500">หน่วยนับ: {item.unit} • ผู้จำหน่าย: {item.supplier || '-'}</div>
+                      <div className="text-[11px] text-slate-500">
+                        หน่วยนับ: {item.unit} • ผู้จำหน่าย: <span className="font-medium text-slate-700">{item.supplier || '-'}</span>
+                      </div>
                     </td>
                     <td className="p-4 text-center">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
@@ -145,22 +177,27 @@ export const InventoryManagementView: React.FC = () => {
                     </td>
                     <td className="p-4 text-center font-medium text-slate-600">{item.minQty} {item.unit}</td>
                     <td className="p-4 font-semibold">฿{item.unitPrice.toLocaleString()}</td>
-                    <td className="p-4 text-slate-600">{item.location}</td>
+                    <td className="p-4 text-slate-600 font-medium">{item.location || '-'}</td>
                     <td className="p-4 text-center">
                       <div className="flex items-center justify-center space-x-1.5">
+                        {canReceiveInventory && (
+                          <button
+                            onClick={() => {
+                              setShowTrxModal({ item, type: 'รับเข้าสต็อก' });
+                              setTrxUnitPrice(item.unitPrice);
+                              setTrxMinQty(item.minQty);
+                            }}
+                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            รับเข้า
+                          </button>
+                        )}
                         <button
                           onClick={() => {
-                            setShowTrxModal({ item, type: 'รับเข้าสต็อก' });
-                            setTrxUnitPrice(item.unitPrice);
-                            setTrxMinQty(item.minQty);
+                            setShowTrxModal({ item, type: 'เบิกวัสดุ' });
+                            setTrxDeptId(currentUser.departmentId);
                           }}
-                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors"
-                        >
-                          รับเข้า
-                        </button>
-                        <button
-                          onClick={() => setShowTrxModal({ item, type: 'เบิกวัสดุ' })}
-                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors"
+                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-colors cursor-pointer"
                         >
                           เบิกวัสดุ
                         </button>
@@ -176,11 +213,11 @@ export const InventoryManagementView: React.FC = () => {
 
       {/* Add Item Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-['Sarabun',sans-serif]">
           <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
-              <h3 className="text-base font-bold text-slate-900">เพิ่มรายการวัสดุใหม่</h3>
-              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 text-lg font-bold">&times;</button>
+              <h3 className="text-base font-bold text-slate-900">เพิ่มรายการวัสดุใหม่ (รับเข้าสต็อก)</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer">&times;</button>
             </div>
             <form onSubmit={handleCreateItem} className="space-y-4">
               <div>
@@ -190,7 +227,7 @@ export const InventoryManagementView: React.FC = () => {
                   required
                   value={newItem.itemCode}
                   onChange={(e) => setNewItem({ ...newItem, itemCode: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500 font-mono font-bold text-blue-800"
                 />
               </div>
               <div>
@@ -198,12 +235,36 @@ export const InventoryManagementView: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="เช่น ตลับหมึก HP LaserJet"
+                  placeholder="เช่น ตลับหมึก HP LaserJet, สาย LAN Cat6 3m"
                   value={newItem.name}
                   onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
                   className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">ผู้จำหน่าย / ร้านค้า</label>
+                  <input
+                    type="text"
+                    placeholder="เช่น บจก. ไอที ซัพพลาย"
+                    value={newItem.supplier}
+                    onChange={(e) => setNewItem({ ...newItem, supplier: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">สถานที่จัดเก็บ</label>
+                  <input
+                    type="text"
+                    placeholder="เช่น คลังพัสดุ IT ชั้น 3"
+                    value={newItem.location}
+                    onChange={(e) => setNewItem({ ...newItem, location: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">หน่วยนับ</label>
@@ -229,23 +290,25 @@ export const InventoryManagementView: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">จำนวนเริ่มต้น</label>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">จำนวนรับเข้า (รับเข้าเริ่มต้น)</label>
                   <input
                     type="number"
+                    min="1"
                     required
                     value={newItem.stockQty}
                     onChange={(e) => setNewItem({ ...newItem, stockQty: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500 font-bold text-emerald-700"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">จุดสั่งซื้อขั้นต่ำ (Min Qty)</label>
                   <input
                     type="number"
+                    min="0"
                     required
                     value={newItem.minQty}
                     onChange={(e) => setNewItem({ ...newItem, minQty: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500 font-bold text-blue-700"
                   />
                 </div>
               </div>
@@ -253,15 +316,15 @@ export const InventoryManagementView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-blue-200"
                 >
-                  บันทึกวัสดุ
+                  บันทึกรับเข้าพัสดุ
                 </button>
               </div>
             </form>
@@ -269,15 +332,26 @@ export const InventoryManagementView: React.FC = () => {
         </div>
       )}
 
-      {/* Transaction Modal (Receive: no ref, add unit price & total price. Dispense: select department, no ref) */}
+      {/* Transaction Modal (Receive / Dispense) */}
       {showTrxModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 font-['Sarabun',sans-serif]">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
               <h3 className="text-base font-bold text-slate-900">{showTrxModal.type}: {showTrxModal.item.name}</h3>
-              <button onClick={() => setShowTrxModal(null)} className="text-slate-400 hover:text-slate-600 text-lg font-bold">&times;</button>
+              <button onClick={() => setShowTrxModal(null)} className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer">&times;</button>
             </div>
+            
             <form onSubmit={handleProcessTrx} className="space-y-4">
+              {showTrxModal.type === 'เบิกวัสดุ' && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-1">
+                  <div className="text-[11px] font-semibold text-blue-700">ชื่อผู้เบิก (ดึงจากบัญชีผู้ใช้ที่ล็อกอินอยู่):</div>
+                  <div className="font-bold text-slate-900 text-sm flex items-center space-x-1.5">
+                    <UserCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>{currentUser.name} ({currentUser.position || currentUser.role})</span>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">จำนวน ({showTrxModal.item.unit})</label>
                 <input
@@ -286,7 +360,7 @@ export const InventoryManagementView: React.FC = () => {
                   required
                   value={trxQty}
                   onChange={(e) => setTrxQty(Number(e.target.value))}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500 font-bold"
                 />
               </div>
 
@@ -328,7 +402,7 @@ export const InventoryManagementView: React.FC = () => {
                   <select
                     value={trxDeptId}
                     onChange={(e) => setTrxDeptId(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500 font-medium"
                   >
                     {departments.map(d => (
                       <option key={d.id} value={d.id}>{d.name}</option>
@@ -351,13 +425,13 @@ export const InventoryManagementView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowTrxModal(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-md shadow-blue-200"
                 >
                   ยืนยันทำรายการ
                 </button>
