@@ -84,12 +84,13 @@ export const initialAssetLocations: string[] = [
 ];
 
 export const initialUsers: UserProfile[] = [
-  { id: 'usr-1', name: 'สมชาย ผู้ดูแลระบบ', email: 'admin@hospital.go.th', role: 'Super Admin', departmentId: 'dept-1', position: 'นักวิชาการคอมพิวเตอร์ชำนาญการพิเศษ', phone: '081-111-1111', status: 'Active' },
-  { id: 'usr-2', name: 'วิชัย พัสดุดี', email: 'supply@hospital.go.th', role: 'Supply Officer', departmentId: 'dept-1', position: 'เจ้าพนักงานพัสดุชำนาญงาน', phone: '082-222-2222', status: 'Active' },
-  { id: 'usr-3', name: 'ธนากร ไอทีซัพพอร์ต', email: 'it@hospital.go.th', role: 'IT Officer', departmentId: 'dept-1', position: 'นักวิชาการคอมพิวเตอร์ปฏิบัติการ', phone: '083-333-3333', status: 'Active' },
-  { id: 'usr-4', name: 'พญ. วarda การแพทย์', email: 'doctor@hospital.go.th', role: 'Department Head', departmentId: 'dept-5', position: 'นายแพทย์ชำนาญการ', phone: '084-444-4444', status: 'Active' },
-  { id: 'usr-5', name: 'กนกวรรณ อนุมัติงบ', email: 'director@hospital.go.th', role: 'Approver', departmentId: 'dept-2', position: 'ผู้อำนวยการกองคลัง', phone: '085-555-5555', status: 'Active' },
-  { id: 'usr-6', name: 'สุรชัย ตรวจสอบภายใน', email: 'auditor@hospital.go.th', role: 'Auditor', departmentId: 'dept-4', position: 'นักตรวจสอบภายใน', phone: '086-666-6666', status: 'Active' },
+  { id: 'usr-7', username: 'user', name: 'พัชราภรณ์ สุขใจ (ผู้ใช้งานทั่วไป)', email: 'user@hospital.go.th', role: 'General User', departmentId: 'dept-1', position: 'เจ้าหน้าที่ธุรการ / พนักงานทั่วไป', phone: '087-777-7777', status: 'Active', password: '123456' },
+  { id: 'usr-1', username: 'admin', name: 'สมชาย ผู้ดูแลระบบ', email: 'admin@hospital.go.th', role: 'Super Admin', departmentId: 'dept-1', position: 'นักวิชาการคอมพิวเตอร์ชำนาญการพิเศษ', phone: '081-111-1111', status: 'Active', password: '123456' },
+  { id: 'usr-2', username: 'supply', name: 'วิชัย พัสดุดี', email: 'supply@hospital.go.th', role: 'Supply Officer', departmentId: 'dept-1', position: 'เจ้าพนักงานพัสดุชำนาญงาน', phone: '082-222-2222', status: 'Active', password: '123456' },
+  { id: 'usr-3', username: 'it', name: 'ธนากร ไอทีซัพพอร์ต', email: 'it@hospital.go.th', role: 'IT Officer', departmentId: 'dept-1', position: 'นักวิชาการคอมพิวเตอร์ปฏิบัติการ', phone: '083-333-3333', status: 'Active', password: '123456' },
+  { id: 'usr-4', username: 'doctor', name: 'พญ. วarda การแพทย์', email: 'doctor@hospital.go.th', role: 'Department Head', departmentId: 'dept-5', position: 'นายแพทย์ชำนาญการ', phone: '084-444-4444', status: 'Active', password: '123456' },
+  { id: 'usr-5', username: 'director', name: 'กนกวรรณ อนุมัติงบ', email: 'director@hospital.go.th', role: 'Approver', departmentId: 'dept-2', position: 'ผู้อำนวยการกองคลัง', phone: '085-555-5555', status: 'Active', password: '123456' },
+  { id: 'usr-6', username: 'auditor', name: 'สุรชัย ตรวจสอบภายใน', email: 'auditor@hospital.go.th', role: 'Auditor', departmentId: 'dept-4', position: 'นักตรวจสอบภายใน', phone: '086-666-6666', status: 'Active', password: '123456' },
 ];
 
 export const initialAssets: Asset[] = [

@@ -234,8 +234,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { localStorage.setItem('smart_asset_audit_logs', JSON.stringify(auditLogs)); }, [auditLogs]);
   useEffect(() => { localStorage.setItem('smart_asset_settings', JSON.stringify(settings)); }, [settings]);
 
-  const login = (email: string, password?: string): boolean => {
-    const found = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  const login = (userInput: string, password?: string): boolean => {
+    const query = userInput.trim().toLowerCase();
+    if (!query) return false;
+
+    const matchUser = (u: UserProfile) => {
+      const emailPrefix = u.email.split('@')[0].toLowerCase();
+      return (
+        (u.username && u.username.toLowerCase() === query) ||
+        emailPrefix === query ||
+        u.email.toLowerCase() === query ||
+        u.name.toLowerCase() === query
+      );
+    };
+
+    let found = users.find(matchUser);
+    if (!found) {
+      const initMatch = initialUsers.find(matchUser);
+      if (initMatch) {
+        found = initMatch;
+        setUsers(prev => [initMatch, ...prev.filter(p => p.id !== initMatch.id)]);
+      }
+    }
     if (found) {
       if (found.password && password && found.password !== password) {
         return false;
