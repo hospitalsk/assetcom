@@ -14,7 +14,7 @@ export const getRoleAllowedTabs = (role: string): string[] => {
   if (!role) return ['dashboard', 'repair'];
   const r = role.toLowerCase().trim();
   
-  // General mechanic restriction: ONLY dashboard and repair
+  // General mechanic restriction: dashboard, repair
   if (r === 'general mechanic' || r === 'general_mechanic' || r === 'ช่างทั่วไป' || r === 'ช่าง') {
     return ['dashboard', 'repair'];
   }

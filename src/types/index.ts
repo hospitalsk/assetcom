@@ -176,6 +176,7 @@ export interface RepairRequest {
   partsCost: number;
   totalCost: number;
   sentDate?: string;
+  acceptedDate?: string;
   completedDate?: string;
   beforeImageUrl?: string;
   afterImageUrl?: string;

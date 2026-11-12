@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
+import { Footer } from './components/Footer';
 import { LoginModal } from './components/LoginModal';
 import { DashboardView } from './views/DashboardView';
 import { AssetManagementView } from './views/AssetManagementView';
@@ -56,7 +57,7 @@ const MainLayout: React.FC = () => {
   const currentTab = allowedToView ? activeTab : 'dashboard';
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-['Sarabun',sans-serif] text-slate-800">
+    <div className="min-h-screen bg-[#E8F0F8] flex flex-col font-['Sarabun',sans-serif] text-slate-800">
       <Navbar onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
       {lineAcceptToast && (
         <div className="bg-emerald-600 text-white px-4 py-3 text-xs sm:text-sm font-black flex items-center justify-between shadow-lg animate-in slide-in-from-top-4 z-50">
@@ -74,7 +75,7 @@ const MainLayout: React.FC = () => {
       )}
       <div className="flex flex-1 overflow-hidden relative">
         <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-        <main className="flex-1 p-3 sm:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full">
+        <main className="flex-1 p-3 sm:p-5 overflow-y-auto max-w-[1700px] mx-auto w-full space-y-4">
           {currentTab === 'dashboard' && <DashboardView />}
           {currentTab === 'assets' && <AssetManagementView />}
           {currentTab === 'inventory' && <InventoryManagementView />}
@@ -87,6 +88,7 @@ const MainLayout: React.FC = () => {
           {currentTab === 'settings' && <SettingsView />}
         </main>
       </div>
+      <Footer />
     </div>
   );
 };

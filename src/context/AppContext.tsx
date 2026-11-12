@@ -405,10 +405,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAuditLog('DISPENSE', 'IT Inventory', trx.id, `${type}วัสดุ ${item.name} จำนวน ${qty} ${item.unit}`);
 
     if (type === 'เบิกวัสดุ') {
-      const deptName = departments.find(d => d.id === (departmentId || currentUser.departmentId))?.name || 'กลุ่มงานทั่วไป';
       addNotification(
-        'แจ้งเตือนเบิกวัสดุ (ส่งถึง IT)',
-        `ผู้เบิก: ${currentUser.name} | แผนก: ${deptName} | วัสดุ: ${item.name} (${item.itemCode}) | จำนวน: ${qty} ${item.unit}`,
+        'แจ้งเตือนการเบิกวัสดุ (เฉพาะ IT)',
+        `ผู้เบิก: ${currentUser.name} | วัสดุ: ${item.name} (${item.itemCode}) | จำนวน: ${qty} ${item.unit}`,
         'info',
         'inventory'
       );
@@ -495,6 +494,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const totalCost = partsCost + merged.laborCost;
         const finalized = { ...merged, totalCost };
         
+        // Auto-record acceptedDate when technician accepts/starts working
+        if ((finalized.status === 'กำลังดำเนินการ' || finalized.status === 'ส่งซ่อมภายนอก' || finalized.status === 'รออะไหล่') && !finalized.acceptedDate) {
+          finalized.acceptedDate = new Date().toISOString();
+        }
+
+        // Auto-record completedDate when completed/closed
+        if ((finalized.status === 'ซ่อมเสร็จ' || finalized.status === 'ปิดงาน' || finalized.status === 'ดำเนินการเสร็จ') && !finalized.completedDate) {
+          finalized.completedDate = new Date().toISOString();
+        }
+
         syncRepairRequestToSupabase(finalized);
 
         // If status transitions from 'รอตรวจสอบ' (Pending Approval) to 'รอรับเรื่อง' / 'กำลังดำเนินการ' (Approved)
