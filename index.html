@@ -16,20 +16,45 @@
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body class="bg-slate-50 text-slate-800 font-['Sarabun',sans-serif] antialiased">
-    <div id="root"></div>
-    <script type="module" src="./src/main.tsx"></script>
+    <div id="root">
+      <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; color: #f8fafc; font-family: 'Sarabun', sans-serif; text-align: center; padding: 20px;">
+        <div style="width: 52px; height: 52px; border: 4px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 20px;"></div>
+        <h2 style="font-size: 18px; font-weight: 600; margin: 0 0 8px 0; color: #ffffff;">กำลังโหลดระบบ Smart Asset & IT Inventory...</h2>
+        <p style="font-size: 13px; color: #94a3b8; margin: 0;">ระบบบริหารจัดการครุภัณฑ์และวัสดุคอมพิวเตอร์</p>
+      </div>
+      <style>
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      </style>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Fallback redirect if user configures GitHub Pages with Source: / (root) branch instead of GitHub Actions or /docs
-      if (window.location.hostname.endsWith('github.io')) {
+      // Fallback script if served on static hosting (e.g. GitHub Pages root branch) where raw .tsx cannot execute
+      (function() {
         setTimeout(function() {
-          if (!window.__APP_MOUNTED__ && !document.getElementById('root')?.hasChildNodes()) {
-            var path = window.location.pathname.replace(/\/index\.html$/i, '').replace(/\/+$/, '');
-            if (!path.endsWith('/docs')) {
-              window.location.replace(path + '/docs/' + window.location.search + window.location.hash);
+          if (!window.__APP_MOUNTED__) {
+            console.warn('App not mounted via dev server, checking static bundle fallback...');
+            if (window.location.hostname.endsWith('github.io')) {
+              var path = window.location.pathname.replace(/\/index\.html$/i, '').replace(/\/+$/, '');
+              if (!path.endsWith('/docs')) {
+                window.location.replace(path + '/docs/' + window.location.search + window.location.hash);
+                return;
+              }
             }
+            // Load compiled assets if available
+            var script = document.createElement('script');
+            script.type = 'module';
+            script.crossOrigin = 'anonymous';
+            script.src = './assets/index.js';
+            document.body.appendChild(script);
+
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.crossOrigin = 'anonymous';
+            link.href = './assets/index.css';
+            document.head.appendChild(link);
           }
-        }, 300);
-      }
+        }, 350);
+      })();
     </script>
   </body>
 </html>
