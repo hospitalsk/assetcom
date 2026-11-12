@@ -18,6 +18,7 @@ export interface MemoFormData {
   headSign: string;
   headName: string;
   headPosition: string;
+  isHeadApproved?: boolean;
   canSelfRepairFree: boolean;
   canSelfRepairWithCost: boolean;
   sendToGovTech: boolean;
@@ -265,10 +266,17 @@ export function generateOfficialMemoHtml(data: MemoFormData): string {
             </div>
             <div class="signature-box">
                 <div>ความเห็นของหัวหน้าฝ่าย/หัวหน้ากลุ่มงาน</div>
+                ${data.isHeadApproved !== false ? `
                 <div class="row" style="justify-content: center;"><input type="text" style="width: 300px; text-align: center;" value="${data.headOpinion || ''}"></div>
                 <div class="row" style="justify-content: center;">ลงชื่อ<input type="text" style="width: 160px; text-align: center;" value="${data.headSign || ''}"></div>
                 <div class="row" style="justify-content: left;">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(<input type="text" style="width: 170px; text-align: center;" value="${data.headName || ''}">)</div>
                 <div class="row" style="justify-content: center;">ตำแหน่ง<input type="text" style="width: 270px; text-align: center;" value="${data.headPosition || ''}"></div>
+                ` : `
+                <div class="row" style="justify-content: center; color: #94a3b8;">.........................................................................................</div>
+                <div class="row" style="justify-content: center; margin-top: 4px;">ลงชื่อ..................................................</div>
+                <div class="row" style="justify-content: center;">(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
+                <div class="row" style="justify-content: center;">ตำแหน่ง..................................................</div>
+                `}
             </div>
         </div>
 

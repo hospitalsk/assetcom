@@ -485,21 +485,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...reqData,
       id: generateUniqueId('rep'),
       repairNo: `REP-${new Date().getFullYear() + 543}-${Math.floor(100 + Math.random() * 900)}`,
-      status: 'รอตรวจสอบ', // Requires Approver approval first before alerting LINE OA
+      status: 'รอหัวหน้าอนุมัติ', // Step 1: Created, waiting for Department Head
       totalCost,
       createdAt: new Date().toISOString()
     };
     setRepairRequests(prev => [newRep, ...prev]);
     syncRepairRequestToSupabase(newRep);
     updateAsset(newRep.assetId, { status: 'กำลังซ่อม' });
-    addAuditLog('REPAIR', 'Repair Management', newRep.id, `ยื่นใบแจ้งซ่อมครุภัณฑ์เลขที่ ${newRep.repairNo} (รอ Approver อนุมัติ)`);
+    addAuditLog('REPAIR', 'Repair Management', newRep.id, `ยื่นใบแจ้งซ่อมครุภัณฑ์เลขที่ ${newRep.repairNo} (ส่งแจ้งเตือนรอหัวหน้ากลุ่มงานอนุมัติ)`);
 
     const targetAsset = assets.find(a => a.id === newRep.assetId);
 
-    // Notify Approver(s) for approval requirement
+    // Step 1 Notification: Send alert to Department Head
     addNotification(
-      'คำขอแจ้งซ่อมรอการอนุมัติ', 
-      `สร้างใบแจ้งซ่อม ${newRep.repairNo} (${targetAsset?.name || 'ครุภัณฑ์'}) เรียบร้อยแล้ว (รอผู้มีอำนาจ Approver กดอนุมัติก่อนส่ง LINE OA ไปยังช่าง)`, 
+      'คำขอแจ้งซ่อมรอหัวหน้าอนุมัติ', 
+      `สร้างใบแจ้งซ่อม ${newRep.repairNo} (${targetAsset?.name || 'ครุภัณฑ์'}) เรียบร้อยแล้ว (ส่งแจ้งเตือนไปยังหัวหน้ากลุ่มงาน Department Head เพื่อพิจารณาอนุมัติ)`, 
       'warning', 
       'repair'
     );
@@ -520,14 +520,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         // Auto-record completedDate when completed/closed
-        if ((finalized.status === 'ซ่อมเสร็จ' || finalized.status === 'ปิดงาน' || finalized.status === 'ดำเนินการเสร็จ') && !finalized.completedDate) {
+        if ((finalized.status === 'ซ่อมเสร็จ' || finalized.status === 'ปิดงาน' || finalized.status === 'ดำเนินการเสร็จ' || finalized.status === 'รอหน่วยงานรับของ') && !finalized.completedDate) {
           finalized.completedDate = new Date().toISOString();
         }
 
-        syncRepairRequestToSupabase(finalized);
+        // Step 2 -> Step 3 transition: Department Head Approval
+        if (!r.departmentHeadApproved && finalized.departmentHeadApproved) {
+          const targetAsset = assets.find(a => a.id === finalized.assetId);
+          addNotification(
+            'หัวหน้ากลุ่มงานอนุมัติซ่อมแล้ว',
+            `ใบแจ้งซ่อม ${finalized.repairNo} (${targetAsset?.name || 'ครุภัณฑ์'}) ผ่านการอนุมัติจากหัวหน้ากลุ่มงาน (${finalized.departmentHeadApprovedBy || currentUser.name}) เรียบร้อยแล้ว -> ส่งเรื่องให้หัวหน้าเจ้าหน้าที่พัสดุ (Supply Officer)`,
+            'info',
+            'repair'
+          );
+        }
 
-        // If status transitions from 'รอตรวจสอบ' (Pending Approval) to 'รอรับเรื่อง' / 'กำลังดำเนินการ' (Approved)
-        if (r.status === 'รอตรวจสอบ' && (finalized.status === 'รอรับเรื่อง' || finalized.status === 'กำลังดำเนินการ')) {
+        // Step 3 -> Step 4 transition: Supply Officer Approval
+        if (!r.supplyOfficerApproved && finalized.supplyOfficerApproved) {
+          const targetAsset = assets.find(a => a.id === finalized.assetId);
+          addNotification(
+            'หัวหน้าพัสดุอนุมัติซ่อมแล้ว',
+            `ใบแจ้งซ่อม ${finalized.repairNo} (${targetAsset?.name || 'ครุภัณฑ์'}) ผ่านการอนุมัติจากหัวหน้าเจ้าหน้าที่พัสดุ (${finalized.supplyOfficerApprovedBy || currentUser.name}) เรียบร้อยแล้ว -> ส่งเรื่องเสนอผู้อำนวยการโรงพยาบาล (Approver)`,
+            'info',
+            'repair'
+          );
+        }
+
+        // Step 4 -> Step 5 transition: Director (Approver) Approval
+        if (!r.directorApproved && finalized.directorApproved) {
           const targetAsset = assets.find(a => a.id === finalized.assetId);
           const reporter = users.find(u => u.id === finalized.reporterId);
           const dept = departments.find(d => d.id === finalized.departmentId);
@@ -542,14 +562,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           );
 
           addNotification(
-            'อนุมัติคำขอแจ้งซ่อมแล้ว', 
-            `ใบแจ้งซ่อม ${finalized.repairNo} ได้รับการอนุมัติเรียบร้อยแล้ว และระบบได้ส่งสัญญาณแจ้งเตือนไปยัง LINE OA ของช่างแล้ว`, 
-            'success', 
+            'ผู้อำนวยการอนุมัติให้ดำเนินการซ่อมแล้ว',
+            `ใบแจ้งซ่อม ${finalized.repairNo} ได้รับการอนุมัติจากผู้อำนวยการ (${finalized.directorApprovedBy || currentUser.name}) เรียบร้อยแล้ว -> ส่งแจ้งเตือนไปยังหน่วยงานซ่อมบำรุง/ช่าง (IT Officer / Mechanic)`,
+            'success',
             'repair'
           );
         }
 
-        if (finalized.status === 'ซ่อมเสร็จ' || finalized.status === 'ปิดงาน' || finalized.status === 'ดำเนินการเสร็จ') {
+        // Step 5 -> Step 6 transition: Technician completes repair
+        if ((finalized.status === 'ซ่อมเสร็จ' || finalized.status === 'ดำเนินการเสร็จ' || finalized.status === 'รอหน่วยงานรับของ') && r.status !== finalized.status) {
+          addNotification(
+            'ซ่อมบำรุงเสร็จเรียบร้อยแล้ว',
+            `ใบแจ้งซ่อม ${finalized.repairNo} ดำเนินการซ่อมเสร็จแล้วโดยช่าง ${finalized.maintCompletedBy || currentUser.name} โปรดให้หน่วยงานที่แจ้งซ่อมกดรับของในระบบ`,
+            'success',
+            'repair'
+          );
+        }
+
+        // Step 6: Requesting department confirms receipt ("กดรับของ")
+        if (!r.itemReceived && finalized.itemReceived) {
+          updateAsset(finalized.assetId, { status: 'พร้อมใช้งาน' });
+          addNotification(
+            'ยืนยันการรับพัสดุ/ครุภัณฑ์คืนเรียบร้อยแล้ว',
+            `ใบแจ้งซ่อม ${finalized.repairNo} ถูกกดรับของคืนเรียบร้อยแล้วโดย ${finalized.itemReceivedBy || currentUser.name} (ปิดงานสมบูรณ์)`,
+            'success',
+            'repair'
+          );
+        }
+
+        syncRepairRequestToSupabase(finalized);
+
+        if (finalized.status === 'รับของเรียบร้อย' || finalized.status === 'ปิดงาน' || finalized.status === 'ดำเนินการเสร็จ') {
           updateAsset(finalized.assetId, { status: 'พร้อมใช้งาน' });
         }
         return finalized;

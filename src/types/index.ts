@@ -143,6 +143,9 @@ export interface BorrowRequest {
 }
 
 export type RepairStatus = 
+  | 'รอหัวหน้าอนุมัติ' 
+  | 'รอพัสดุอนุมัติ' 
+  | 'รอผู้อำนวยการอนุมัติ' 
   | 'รอรับเรื่อง' 
   | 'รอตรวจสอบ' 
   | 'รอดำเนินการ'
@@ -150,6 +153,8 @@ export type RepairStatus =
   | 'ส่งซ่อมภายนอก' 
   | 'รออะไหล่' 
   | 'ซ่อมเสร็จ' 
+  | 'รอหน่วยงานรับของ'
+  | 'รับของเรียบร้อย'
   | 'ดำเนินการเสร็จ'
   | 'ไม่สามารถซ่อมได้' 
   | 'ปิดงาน';
@@ -182,6 +187,37 @@ export interface RepairRequest {
   beforeImageUrl?: string;
   afterImageUrl?: string;
   notes?: string;
+
+  // Step 2: Department Head Approval
+  departmentHeadApproved?: boolean;
+  departmentHeadApprovedBy?: string;
+  departmentHeadApprovedAt?: string;
+  headOpinion?: string;
+  headPosition?: string;
+
+  // Step 3: Supply Officer Approval
+  supplyOfficerApproved?: boolean;
+  supplyOfficerApprovedBy?: string;
+  supplyOfficerApprovedAt?: string;
+  supplyPosition?: string;
+
+  // Step 4: Hospital Director (Approver) Approval
+  directorApproved?: boolean;
+  directorApprovedBy?: string;
+  directorApprovedAt?: string;
+  approverComments?: string;
+
+  // Step 5: Maintenance Unit / Technician
+  technicianApproved?: boolean;
+  technicianApprovedBy?: string;
+  maintCompletedBy?: string;
+  maintCompletedAt?: string;
+
+  // Step 6: Requesting Unit Item Receipt
+  itemReceived?: boolean;
+  itemReceivedBy?: string;
+  itemReceivedAt?: string;
+
   createdAt: string;
 }
 

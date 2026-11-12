@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Wrench, CheckCircle2, AlertCircle, Send, Smartphone, User, Monitor, Check, DollarSign, Edit, Plus, Trash2, Calendar, TrendingUp, Clock, Printer } from 'lucide-react';
+import { Wrench, CheckCircle2, AlertCircle, Send, Smartphone, User, Monitor, Check, DollarSign, Edit, Plus, Trash2, Calendar, TrendingUp, Clock, Printer, Package } from 'lucide-react';
 import { RepairStatus, RepairRequest } from '../types';
 import { canManageRepairStatus } from '../utils/permissions';
 import { OfficialRepairPrintModal } from './OfficialRepairPrintModal';
@@ -457,81 +457,174 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
                   {isNeedsApproval ? 'ขั้นตอนการอนุมัติ:' : canManage ? 'การจัดการสำหรับช่าง/ผู้ดูแลระบบ:' : 'สถานะงานซ่อมปัจจุบัน:'}
                 </div>
                 
-                {/* Approval Step requirement */}
-                {isNeedsApproval ? (
-                  canApprove ? (
+                {/* Step 1 -> Step 2: Waiting for Department Head Approval */}
+                {(!rep.departmentHeadApproved && (rep.status === 'รอหัวหน้าอนุมัติ' || rep.status === 'รอตรวจสอบ' || rep.status === 'รอรับเรื่อง')) && (
+                  currentUser.role === 'Department Head' || currentUser.role === 'Super Admin' ? (
                     <button
                       onClick={() => {
-                        updateRepairRequest(rep.id, { status: 'รอรับเรื่อง' });
-                        setSuccessToast(`✅ อนุมัติการแจ้งซ่อม ${rep.repairNo} เรียบร้อยแล้ว! ระบบได้ส่งแจ้งเตือนไปยัง LINE OA (@765satuz) ของช่างแล้ว`);
+                        updateRepairRequest(rep.id, {
+                          departmentHeadApproved: true,
+                          departmentHeadApprovedBy: currentUser.name,
+                          departmentHeadApprovedAt: new Date().toISOString(),
+                          status: 'รอพัสดุอนุมัติ'
+                        });
+                        setSuccessToast(`✅ (หัวหน้ากลุ่มงาน) อนุมัติการแจ้งซ่อม ${rep.repairNo} เรียบร้อย -> ส่งเรื่องต่อให้หัวหน้าพัสดุ (Supply Officer)`);
                         setTimeout(() => setSuccessToast(null), 5000);
                       }}
-                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all transform active:scale-95 cursor-pointer animate-pulse"
+                      className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer animate-pulse"
                     >
                       <CheckCircle2 className="w-4.5 h-4.5" />
-                      <span>✅ กดอนุมัติการแจ้งซ่อม (ส่งแจ้งเตือนเข้า LINE ช่าง)</span>
+                      <span>✍️ กดอนุมัติซ่อม (ในฐานะหัวหน้ากลุ่มงาน)</span>
                     </button>
                   ) : (
                     <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-center text-xs font-bold space-y-1">
-                      <div>⏳ รอผู้มีอำนาจ (Approver) ตรวจสอบและอนุมัติ</div>
-                      <div className="text-[10px] text-amber-700 font-normal">เมื่อได้รับการอนุมัติแล้ว ระบบจะส่งการแจ้งเตือนไปยัง LINE OA ของช่างทันที</div>
+                      <div>⏳ ขั้นตอนที่ 1: รอหัวหน้ากลุ่มงาน (Department Head) อนุมัติ</div>
+                      <div className="text-[10px] text-amber-700 font-normal">ระบบจะส่งการแจ้งเตือนไปยังหัวหน้ากลุ่มงานในระบบ</div>
                     </div>
                   )
-                ) : canManage ? (
-                  <>
-                    {isPendingAccept ? (
-                      <button
-                        onClick={() => handleAcceptJob(rep.id, rep.repairNo)}
-                        className="w-full py-3 bg-[#00B900] hover:bg-emerald-600 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all transform active:scale-95 cursor-pointer"
-                      >
-                        <Check className="w-4 h-4" />
-                        <span>🟢 กดรับงานซ่อม (Accept Job)</span>
-                      </button>
-                    ) : (
-                      <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded-xl text-center text-xs font-bold flex items-center justify-center space-x-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>รับงานแล้วโดย {technician ? technician.name : currentUser.name}</span>
-                      </div>
-                    )}
+                )}
 
-                    {/* Edit Technician & Cost Details Button */}
+                {/* Step 2 -> Step 3: Waiting for Supply Officer Approval */}
+                {(rep.departmentHeadApproved && !rep.supplyOfficerApproved && (rep.status === 'รอพัสดุอนุมัติ' || rep.status === 'รอหัวหน้าอนุมัติ' || rep.status === 'รอตรวจสอบ')) && (
+                  currentUser.role === 'Supply Officer' || currentUser.role === 'Super Admin' ? (
                     <button
-                      type="button"
-                      onClick={() => handleOpenEditModal(rep)}
-                      className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold border border-blue-200 transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                      onClick={() => {
+                        updateRepairRequest(rep.id, {
+                          supplyOfficerApproved: true,
+                          supplyOfficerApprovedBy: currentUser.name,
+                          supplyOfficerApprovedAt: new Date().toISOString(),
+                          status: 'รอผู้อำนวยการอนุมัติ'
+                        });
+                        setSuccessToast(`✅ (หัวหน้าพัสดุ) อนุมัติการแจ้งซ่อม ${rep.repairNo} เรียบร้อย -> เสนอเรื่องต่อผู้อำนวยการโรงพยาบาล (Approver)`);
+                        setTimeout(() => setSuccessToast(null), 5000);
+                      }}
+                      className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer animate-pulse"
                     >
-                      <Edit className="w-3.5 h-3.5 text-blue-600" />
-                      <span>✏️ ระบุช่างรับงาน & บันทึกค่าใช้จ่ายการซ่อม</span>
+                      <CheckCircle2 className="w-4.5 h-4.5" />
+                      <span>📦 กดอนุมัติซ่อม (ในฐานะหัวหน้าเจ้าหน้าที่พัสดุ)</span>
                     </button>
-
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <select
-                        value={rep.status}
-                        onChange={(e) => handleUpdateStatus(rep.id, e.target.value as RepairStatus)}
-                        className="w-full px-2 py-2 text-[11px] rounded-xl border border-slate-200 bg-slate-50 font-bold text-slate-800"
-                      >
-                        <option value="รอรับเรื่อง">รอรับเรื่อง</option>
-                        <option value="รอตรวจสอบ">รอตรวจสอบ</option>
-                        <option value="รอดำเนินการ">รอดำเนินการ</option>
-                        <option value="กำลังดำเนินการ">กำลังดำเนินการ</option>
-                        <option value="ส่งซ่อมภายนอก">ส่งซ่อมภายนอก</option>
-                        <option value="รออะไหล่">รออะไหล่</option>
-                        <option value="ซ่อมเสร็จ">ซ่อมเสร็จ</option>
-                        <option value="ดำเนินการเสร็จ">ดำเนินการเสร็จ</option>
-                        <option value="ปิดงาน">ปิดงาน</option>
-                      </select>
-                      <button
-                        onClick={() => handleUpdateStatus(rep.id, 'ซ่อมเสร็จ')}
-                        className="py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition-all shadow-md cursor-pointer"
-                      >
-                        🛠️ แจ้งซ่อมเสร็จ
-                      </button>
+                  ) : (
+                    <div className="p-3 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-xl text-center text-xs font-bold space-y-1">
+                      <div>⏳ ขั้นตอนที่ 2: รอหัวหน้าเจ้าหน้าที่พัสดุ (Supply Officer) อนุมัติ</div>
+                      <div className="text-[10px] text-indigo-700 font-normal">หัวหน้ากลุ่มงานอนุมัติแล้ว อยู่ระหว่างรอหัวหน้าพัสดุตรวจสอบ</div>
                     </div>
-                  </>
-                ) : (
-                  <div className="p-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-center text-xs font-bold">
-                    <span>สถานะปัจจุบัน: </span>
-                    <span className="text-blue-700 font-extrabold">{rep.status}</span>
+                  )
+                )}
+
+                {/* Step 3 -> Step 4: Waiting for Hospital Director (Approver) Approval */}
+                {(rep.supplyOfficerApproved && !rep.directorApproved && (rep.status === 'รอผู้อำนวยการอนุมัติ' || rep.status === 'รอพัสดุอนุมัติ' || rep.status === 'รอตรวจสอบ')) && (
+                  currentUser.role === 'Approver' || currentUser.role === 'Super Admin' ? (
+                    <button
+                      onClick={() => {
+                        updateRepairRequest(rep.id, {
+                          directorApproved: true,
+                          directorApprovedBy: currentUser.name,
+                          directorApprovedAt: new Date().toISOString(),
+                          status: 'รอดำเนินการ'
+                        });
+                        setSuccessToast(`✅ (ผู้อำนวยการ) อนุมัติการแจ้งซ่อม ${rep.repairNo} เรียบร้อย -> ส่งแจ้งเตือนไปยังช่าง/หน่วยงานซ่อมบำรุง`);
+                        setTimeout(() => setSuccessToast(null), 5000);
+                      }}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer animate-pulse"
+                    >
+                      <CheckCircle2 className="w-4.5 h-4.5" />
+                      <span>🏥 กดอนุมัติซ่อม (ในฐานะผู้อำนวยการโรงพยาบาลสังขละบุรี)</span>
+                    </button>
+                  ) : (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-center text-xs font-bold space-y-1">
+                      <div>⏳ ขั้นตอนที่ 3: รอผู้อำนวยการโรงพยาบาลสังขละบุรี (Approver) พิจารณาอนุมัติ</div>
+                      <div className="text-[10px] text-emerald-700 font-normal">หัวหน้ากลุ่มงานและหัวหน้าพัสดุอนุมัติแล้ว รอผู้อำนวยการลงนามอนุมัติ</div>
+                    </div>
+                  )
+                )}
+
+                {/* Step 4 -> Step 5: Technician Repair & Completion */}
+                {(rep.directorApproved || (rep.status !== 'รอหัวหน้าอนุมัติ' && rep.status !== 'รอพัสดุอนุมัติ' && rep.status !== 'รอผู้อำนวยการอนุมัติ')) && (
+                  canManage ? (
+                    <>
+                      {isPendingAccept ? (
+                        <button
+                          onClick={() => handleAcceptJob(rep.id, rep.repairNo)}
+                          className="w-full py-3 bg-[#00B900] hover:bg-emerald-600 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                        >
+                          <Check className="w-4 h-4" />
+                          <span>🟢 กดรับงานซ่อม (Accept Job)</span>
+                        </button>
+                      ) : (
+                        <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded-xl text-center text-xs font-bold flex items-center justify-center space-x-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                          <span>รับงานแล้วโดย {technician ? technician.name : currentUser.name}</span>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditModal(rep)}
+                        className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl text-xs font-bold border border-blue-200 transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                      >
+                        <Edit className="w-3.5 h-3.5 text-blue-600" />
+                        <span>✏️ บันทึกหน่วยงานซ่อมบำรุง & รายละเอียดค่าใช้จ่าย</span>
+                      </button>
+
+                      {rep.status !== 'ซ่อมเสร็จ' && rep.status !== 'รอหน่วยงานรับของ' && rep.status !== 'รับของเรียบร้อย' && rep.status !== 'ปิดงาน' && (
+                        <button
+                          onClick={() => {
+                            updateRepairRequest(rep.id, {
+                              status: 'รอหน่วยงานรับของ',
+                              technicianApproved: true,
+                              technicianApprovedBy: currentUser.name,
+                              maintCompletedBy: currentUser.name,
+                              maintCompletedAt: new Date().toISOString(),
+                              completedDate: new Date().toISOString()
+                            });
+                            setSuccessToast(`🛠️ บันทึกแจ้งซ่อมเสร็จเรียบร้อย! ระบบส่งแจ้งเตือนไปให้ผู้แจ้งซ่อมกดรับของแล้ว`);
+                            setTimeout(() => setSuccessToast(null), 5000);
+                          }}
+                          className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center justify-center space-x-1"
+                        >
+                          <Wrench className="w-4 h-4" />
+                          <span>🛠️ แจ้งซ่อมเสร็จ (ส่งให้ผู้แจ้งซ่อมกดรับของ)</span>
+                        </button>
+                      )}
+                    </>
+                  ) : null
+                )}
+
+                {/* Step 6: Requesting Department Confirm Item Receipt */}
+                {(rep.status === 'รอหน่วยงานรับของ' || (rep.status === 'ซ่อมเสร็จ' && !rep.itemReceived)) && (
+                  (currentUser.id === rep.reporterId || currentUser.departmentId === rep.departmentId || currentUser.role === 'Super Admin' || currentUser.role === 'General User') ? (
+                    <button
+                      onClick={() => {
+                        updateRepairRequest(rep.id, {
+                          itemReceived: true,
+                          itemReceivedBy: currentUser.name,
+                          itemReceivedAt: new Date().toISOString(),
+                          status: 'รับของเรียบร้อย'
+                        });
+                        setSuccessToast(`📦 ยืนยันการรับพัสดุ/ครุภัณฑ์คืนเรียบร้อยแล้ว โดย ${currentUser.name} (ปิดงานสมบูรณ์)`);
+                        setTimeout(() => setSuccessToast(null), 5000);
+                      }}
+                      className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer animate-pulse"
+                    >
+                      <Package className="w-4.5 h-4.5" />
+                      <span>📦 กดรับของ / ยืนยันรับคืนพัสดุ (แสดงชื่อผู้รับของในเอกสาร)</span>
+                    </button>
+                  ) : (
+                    <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-center text-xs font-bold space-y-1">
+                      <div>📦 ซ่อมเสร็จเรียบร้อยแล้ว (รอหน่วยงานผู้แจ้งซ่อมกดรับของ)</div>
+                      <div className="text-[10px] text-amber-700 font-normal">ผู้แจ้งซ่อม หรือเจ้าหน้าที่ในแผนกเป็นผู้กดรับของ</div>
+                    </div>
+                  )
+                )}
+
+                {/* Final Status Badge */}
+                {rep.itemReceived && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl text-center text-xs font-bold space-y-0.5">
+                    <div className="flex items-center justify-center space-x-1 text-emerald-700">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>รับคืนพัสดุและปิดงานสมบูรณ์แล้ว</span>
+                    </div>
+                    <div className="text-[10px] text-emerald-700 font-medium">ผู้รับของ: {rep.itemReceivedBy} | {rep.itemReceivedAt ? new Date(rep.itemReceivedAt).toLocaleDateString('th-TH') : ''}</div>
                   </div>
                 )}
 

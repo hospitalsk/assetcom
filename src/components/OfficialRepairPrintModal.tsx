@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { RepairRequest } from '../types';
-import { Printer, X, Download } from 'lucide-react';
+import { Printer, X, Download, Lock, CheckCircle, ShieldCheck, UserCheck } from 'lucide-react';
 import { exportA4ElementToPdf } from '../utils/pdfExport';
 
 interface OfficialRepairPrintModalProps {
@@ -13,7 +13,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
   repairRequest,
   onClose,
 }) => {
-  const { assets, departments, users } = useApp();
+  const { assets, departments, users, currentUser, updateRepairRequest } = useApp();
   const printRef = useRef<HTMLDivElement>(null);
 
   const asset = assets.find(a => a.id === repairRequest.assetId);
@@ -54,7 +54,20 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
   const [reporterFullName, setReporterFullName] = useState(reporter.name);
   const [reporterPosition, setReporterPosition] = useState(reporter.position || 'เจ้าหน้าที่');
 
-  // Department Head
+  // Real Workflow Step Approval Flags
+  const isHeadApproved = repairRequest.departmentHeadApproved === true || 
+    (repairRequest.status !== 'รอหัวหน้าอนุมัติ' && repairRequest.status !== 'รอรับเรื่อง' && repairRequest.status !== 'รอตรวจสอบ');
+
+  const isSupplyApproved = repairRequest.supplyOfficerApproved === true || 
+    (isHeadApproved && repairRequest.status !== 'รอพัสดุอนุมัติ' && repairRequest.status !== 'รอหัวหน้าอนุมัติ' && repairRequest.status !== 'รอรับเรื่อง' && repairRequest.status !== 'รอตรวจสอบ');
+
+  const isDirectorApproved = repairRequest.directorApproved === true || 
+    (isSupplyApproved && repairRequest.status !== 'รอผู้อำนวยการอนุมัติ' && repairRequest.status !== 'รอพัสดุอนุมัติ' && repairRequest.status !== 'รอหัวหน้าอนุมัติ' && repairRequest.status !== 'รอรับเรื่อง' && repairRequest.status !== 'รอตรวจสอบ');
+
+  const isTechnicianDone = repairRequest.technicianApproved === true || 
+    repairRequest.status === 'ซ่อมเสร็จ' || repairRequest.status === 'รอหน่วยงานรับของ' || repairRequest.status === 'รับของเรียบร้อย' || repairRequest.status === 'ดำเนินการเสร็จ' || repairRequest.status === 'ปิดงาน';
+
+  const isItemReceived = repairRequest.itemReceived === true || repairRequest.status === 'รับของเรียบร้อย';
   const [headOpinion, setHeadOpinion] = useState('เห็นควรอนุมัติให้ดำเนินการซ่อมบำรุงตามเสนอ');
   const [headSign, setHeadSign] = useState(headUser?.name || 'ดร. สมชาย ใจดี');
   const [headFullName, setHeadFullName] = useState(headUser?.name || 'ดร. สมชาย ใจดี');
@@ -418,6 +431,59 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             {printNotice}
           </div>
         )}
+        {currentUser.role === 'Department Head' || currentUser.role === 'Super Admin' || currentUser.role === 'Approver' ? (
+          !isHeadApproved ? (
+            <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 bg-gradient-to-r from-blue-900/90 to-indigo-900/90 border border-blue-600/80 px-4 py-2.5 rounded-xl text-xs shadow-lg">
+              <div className="flex items-center space-x-2">
+                <span className="p-1.5 bg-blue-600 rounded-lg text-white font-bold">✍️</span>
+                <div>
+                  <div className="font-bold text-white text-xs">อนุมัติในฐานะหัวหน้ากลุ่มงาน ({currentUser.name})</div>
+                  <div className="text-[11px] text-blue-200">กดยืนยันอนุมัติเพื่อบันทึกการลงนามอิเล็กทรอนิกส์ในระบบ</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  updateRepairRequest(repairRequest.id, {
+                    departmentHeadApproved: true,
+                    departmentHeadApprovedBy: currentUser.name,
+                    departmentHeadApprovedAt: new Date().toISOString(),
+                    status: repairRequest.status === 'รอรับเรื่อง' || repairRequest.status === 'รอตรวจสอบ' ? 'รอดำเนินการ' : repairRequest.status
+                  });
+                }}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-md flex items-center space-x-1.5 cursor-pointer shrink-0"
+              >
+                <CheckCircle className="w-4 h-4" />
+                <span>อนุมัติใบแจ้งซ่อมนี้</span>
+              </button>
+            </div>
+          ) : (
+            <div className="w-full flex items-center justify-between bg-emerald-950/80 border border-emerald-700/80 px-4 py-2 rounded-xl text-xs text-emerald-200">
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>
+                  <strong>ผ่านการอนุมัติจากหัวหน้ากลุ่มงานแล้ว</strong>
+                  {repairRequest.departmentHeadApprovedBy ? ` (${repairRequest.departmentHeadApprovedBy})` : ''}
+                </span>
+              </div>
+              <span className="text-[11px] text-emerald-400 font-semibold">แสดงชื่อและลายเซ็นดิจิทัลในเอกสาร</span>
+            </div>
+          )
+        ) : (
+          <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 bg-slate-800/90 border border-slate-700/80 px-4 py-2 rounded-xl text-xs text-slate-300">
+            <div className="flex items-center space-x-2">
+              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                สถานะการอนุมัติหัวหน้ากลุ่มงาน: <strong className={isHeadApproved ? 'text-emerald-400' : 'text-amber-400'}>{isHeadApproved ? '✓ อนุมัติแล้ว (แสดงชื่อและลายเซ็นสมบูรณ์)' : '⏳ ยังไม่อนุมัติ (แสดงเส้นสำหรับเซ็นในกระดาษ)'}</strong>
+              </span>
+            </div>
+            {!isHeadApproved && (
+              <span className="text-[11px] text-amber-300 italic">
+                ต้องได้รับการอนุมัติจากบัญชีหัวหน้ากลุ่มงาน (Department Head) ในระบบ
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Printable Official Government Form Layout */}
@@ -738,19 +804,41 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
 
             <div className="signature-box">
               <div>ความเห็นของหัวหน้าฝ่าย/หัวหน้ากลุ่มงาน</div>
-              <div className="row" style={{ justifyContent: 'center' }}>
-                <input type="text" value={headOpinion} onChange={(e) => setHeadOpinion(e.target.value)} style={{ width: '300px', textAlign: 'center' }} />
-              </div>
-              <div className="row" style={{ justifyContent: 'center' }}>
-                ลงชื่อ<input type="text" value={headSign} onChange={(e) => setHeadSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />
-              </div>
-              <div className="row" style={{ justifyContent: 'left' }}>
-                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                <input type="text" value={headFullName} onChange={(e) => setHeadFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
-              </div>
-              <div className="row" style={{ justifyContent: 'center' }}>
-                ตำแหน่ง<input type="text" value={headPosition} onChange={(e) => setHeadPosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
-              </div>
+              {isHeadApproved ? (
+                <>
+                  <div className="row" style={{ justifyContent: 'center' }}>
+                    <input type="text" value={headOpinion} onChange={(e) => setHeadOpinion(e.target.value)} style={{ width: '300px', textAlign: 'center' }} />
+                  </div>
+                  <div className="row" style={{ justifyContent: 'center' }}>
+                    ลงชื่อ<input type="text" value={headSign} onChange={(e) => setHeadSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />
+                  </div>
+                  <div className="row" style={{ justifyContent: 'left' }}>
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
+                    <input type="text" value={headFullName} onChange={(e) => setHeadFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                  </div>
+                  <div className="row" style={{ justifyContent: 'center' }}>
+                    ตำแหน่ง<input type="text" value={headPosition} onChange={(e) => setHeadPosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="row" style={{ justifyContent: 'center', color: '#94a3b8' }}>
+                    .........................................................................................
+                  </div>
+                  <div className="row" style={{ justifyContent: 'center', marginTop: '4px' }}>
+                    ลงชื่อ..................................................
+                  </div>
+                  <div className="row" style={{ justifyContent: 'center' }}>
+                    (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
+                  </div>
+                  <div className="row" style={{ justifyContent: 'center' }}>
+                    ตำแหน่ง..................................................
+                  </div>
+                  <div className="text-[10px] text-amber-600 font-bold no-print text-center pt-1">
+                    ⚠️ แสดงเมื่อหัวหน้ากลุ่มงาน (Department Head) อนุมัติแล้วเท่านั้น
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -817,58 +905,103 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             <div>
               <span className="bold">จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ</span><br />
               <br />
-              <div className="row" style={{ marginTop: '4px' }}>
-                (ลงชื่อ)<input type="text" value={procureSign} onChange={(e) => setProcureSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
-              </div>
-              <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(นางสาวชุติญา จรัสกุลธาดา)</div>
-              <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ตำแหน่ง&nbsp;หัวหน้าเจ้าหน้าที่</div>
+              {isSupplyApproved ? (
+                <>
+                  <div className="row" style={{ marginTop: '4px' }}>
+                    (ลงชื่อ)<input type="text" value={repairRequest.supplyOfficerApprovedBy || procureSign} onChange={(e) => setProcureSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                  </div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;({repairRequest.supplyOfficerApprovedBy || 'นางสาวชุติญา จรัสกุลธาดา'})</div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ตำแหน่ง&nbsp;หัวหน้าเจ้าหน้าที่</div>
+                </>
+              ) : (
+                <div className="space-y-1">
+                  <div className="row" style={{ marginTop: '4px' }}>(ลงชื่อ)..................................................</div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ตำแหน่ง&nbsp;หัวหน้าเจ้าหน้าที่</div>
+                  <div className="text-[10px] text-amber-600 font-bold no-print">⚠️ รอหัวหน้าเจ้าหน้าที่พัสดุอนุมัติ</div>
+                </div>
+              )}
             </div>
 
             <div>
               <span className="bold">บันทึกหน่วยงานรับซ่อมบำรุง/บันทึกผู้ส่งของ</span><br />
               ได้รับการซ่อมบำรุงตามรายการข้างต้นเรียบร้อยแล้ว<br />
               <br />
-              <div className="row" style={{ marginTop: '4px' }}>
-                &nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)<input type="text" value={deliverSign} onChange={(e) => setDeliverSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
-              </div>
-              <div className="row">
-                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                <input type="text" value={deliverFullName} onChange={(e) => setDeliverFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
-              </div>
-              <div className="row">
-                วันที่<input type="text" value={deliverDay} onChange={(e) => setDeliverDay(e.target.value)} style={{ width: '40px', textAlign: 'center' }} />
-                เดือน<input type="text" value={deliverMonth} onChange={(e) => setDeliverMonth(e.target.value)} style={{ width: '90px', textAlign: 'center' }} />
-                พ.ศ.<input type="text" value={deliverYear} onChange={(e) => setDeliverYear(e.target.value)} style={{ width: '60px', textAlign: 'center' }} />
-              </div>
+              {isTechnicianDone ? (
+                <>
+                  <div className="row" style={{ marginTop: '4px' }}>
+                    &nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)<input type="text" value={repairRequest.maintCompletedBy || deliverSign} onChange={(e) => setDeliverSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                  </div>
+                  <div className="row">
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
+                    <input type="text" value={repairRequest.maintCompletedBy || deliverFullName} onChange={(e) => setDeliverFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                  </div>
+                  <div className="row">
+                    วันที่<input type="text" value={deliverDay} onChange={(e) => setDeliverDay(e.target.value)} style={{ width: '40px', textAlign: 'center' }} />
+                    เดือน<input type="text" value={deliverMonth} onChange={(e) => setDeliverMonth(e.target.value)} style={{ width: '90px', textAlign: 'center' }} />
+                    พ.ศ.<input type="text" value={deliverYear} onChange={(e) => setDeliverYear(e.target.value)} style={{ width: '60px', textAlign: 'center' }} />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-1">
+                  <div className="row" style={{ marginTop: '4px' }}>&nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)..................................................</div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
+                  <div className="row">วันที่............เดือน..........................พ.ศ..............</div>
+                  <div className="text-[10px] text-amber-600 font-bold no-print">⚠️ รอช่างดำเนินการซ่อมเสร็จ</div>
+                </div>
+              )}
             </div>
           </div>
           
           <div className="grid-2" style={{ marginTop: '10px' }}>
             <div>
               <span className="bold">ความคิดเห็นของผู้มีอำนาจอนุมัติ</span><br />
-              <input type="text" value={approverComments1} onChange={(e) => setApproverComments1(e.target.value)} style={{ width: '200px', textAlign: 'center' }} /><br />
-              <input type="text" value={approverComments2} onChange={(e) => setApproverComments2(e.target.value)} style={{ width: '200px', textAlign: 'center' }} /><br />
-              <div className="row" style={{ marginTop: '4px' }}>
-                (ลงชื่อ)<input type="text" value={approverSign} onChange={(e) => setApproverSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
-              </div>
-              <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(นายจิรวัฒน์ วงษ์สวัสดิ์)</div>
-              <div className="row">นายแพทย์ชำนาญการ (ด้านเวชกรรม)</div>
-              <div className="row">ตำแหน่ง&nbsp;ผู้อำนวยการโรงพยาบาลสังขละบุรี</div>
+              {isDirectorApproved ? (
+                <>
+                  <input type="text" value={repairRequest.approverComments || approverComments1} onChange={(e) => setApproverComments1(e.target.value)} style={{ width: '200px', textAlign: 'center' }} /><br />
+                  <input type="text" value={approverComments2} onChange={(e) => setApproverComments2(e.target.value)} style={{ width: '200px', textAlign: 'center' }} /><br />
+                  <div className="row" style={{ marginTop: '4px' }}>
+                    (ลงชื่อ)<input type="text" value={repairRequest.directorApprovedBy || approverSign} onChange={(e) => setApproverSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                  </div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;({repairRequest.directorApprovedBy || 'นายจิรวัฒน์ วงษ์สวัสดิ์'})</div>
+                  <div className="row">นายแพทย์ชำนาญการ (ด้านเวชกรรม)</div>
+                  <div className="row">ตำแหน่ง&nbsp;ผู้อำนวยการโรงพยาบาลสังขละบุรี</div>
+                </>
+              ) : (
+                <div className="space-y-1">
+                  <div>ความคิดเห็น: .....................................................</div>
+                  <div className="row" style={{ marginTop: '4px' }}>(ลงชื่อ)..................................................</div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
+                  <div className="row">ตำแหน่ง&nbsp;ผู้อำนวยการโรงพยาบาลสังขละบุรี</div>
+                  <div className="text-[10px] text-amber-600 font-bold no-print">⚠️ รอผู้อำนวยการพิจารณาอนุมัติ</div>
+                </div>
+              )}
             </div>
 
             <div>
               <span className="bold">บันทึกหน่วยงานรับซ่อมบำรุง/บันทึกผู้รับของ</span><br />
               ได้รับการซ่อมบำรุงตามรายการข้างต้นเรียบร้อยแล้ว<br />
-              <div className="row" style={{ marginTop: '5px' }}>
-                &nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)<input type="text" value={receiveSign} onChange={(e) => setReceiveSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
-              </div>
-              <div className="row">
-                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                <input type="text" value={receiveFullName} onChange={(e) => setReceiveFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
-              </div>
-              <div className="row">
-                ตำแหน่ง<input type="text" value={receivePosition} onChange={(e) => setReceivePosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
-              </div>
+              {isItemReceived ? (
+                <>
+                  <div className="row" style={{ marginTop: '5px' }}>
+                    &nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)<input type="text" value={repairRequest.itemReceivedBy || receiveSign} onChange={(e) => setReceiveSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                  </div>
+                  <div className="row">
+                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
+                    <input type="text" value={repairRequest.itemReceivedBy || receiveFullName} onChange={(e) => setReceiveFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                  </div>
+                  <div className="row">
+                    ตำแหน่ง<input type="text" value={receivePosition} onChange={(e) => setReceivePosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-1">
+                  <div className="row" style={{ marginTop: '5px' }}>&nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)..................................................</div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
+                  <div className="row">ตำแหน่ง..................................................</div>
+                  <div className="text-[10px] text-amber-600 font-bold no-print">⚠️ รอหน่วยงานผู้แจ้งซ่อมกดรับของในระบบ</div>
+                </div>
+              )}
             </div>
           </div>
         </div>
