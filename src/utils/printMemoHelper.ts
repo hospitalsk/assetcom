@@ -1,4 +1,5 @@
 export interface MemoFormData {
+  emblemUrl?: string;
   agency?: string;
   docNumber: string;
   docDate: string;
@@ -195,8 +196,15 @@ export function generateOfficialMemoHtml(data: MemoFormData): string {
 <body>
 
     <div class="a4-page">
-        <!-- ส่วนหัว -->
-        <img src="/assets/aistudio/________9ad4c321.png" alt="คำอธิบายภาพ" style="position: absolute; top: 13px; left: 70px; width: 1.38cm; height: 1.5cm; object-fit: cover;" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Garuda_Emblem_of_Thailand.svg/300px-Garuda_Emblem_of_Thailand.svg.png'">
+        <!-- ส่วนหัว ตราครุฑ 3 ซม. -->
+        <img src="${(() => {
+          const raw = data.emblemUrl || './assets/aistudio/________3cm_fbf2f514.png';
+          if (raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+          if (typeof window !== 'undefined') {
+            try { return new URL(raw, window.location.href).href; } catch { return raw; }
+          }
+          return raw;
+        })()}" alt="ตราครุฑ" style="position: absolute; top: 13px; left: 70px; width: 1.38cm; height: 1.5cm; object-fit: contain;" onerror="this.src='${typeof window !== 'undefined' ? `${window.location.origin}/assets/garuda_3cm.png` : '/assets/garuda_3cm.png'}'">
         <div>
             <div class="header-title" style="padding-left: 272px;">บันทึกข้อความ</div>
             

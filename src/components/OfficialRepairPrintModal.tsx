@@ -13,7 +13,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
   repairRequest,
   onClose,
 }) => {
-  const { assets, departments, users, currentUser, updateRepairRequest } = useApp();
+  const { assets, departments, users, currentUser, updateRepairRequest, settings } = useApp();
   const printRef = useRef<HTMLDivElement>(null);
 
   const asset = assets.find(a => a.id === repairRequest.assetId);
@@ -25,18 +25,25 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
   const technician = users.find(u => u.id === repairRequest.technicianId);
   const headUser = users.find(u => u.role === 'Department Head' || u.departmentId === repairRequest.departmentId);
 
-  // Date formatting helpers
-  const reqDate = new Date(repairRequest.createdAt);
+  // Date formatting helpers (Date when the repair request was reported)
+  const reportDateRaw = repairRequest.sentDate || repairRequest.createdAt;
+  const reqDate = new Date(reportDateRaw);
   const thaiMonths = [
     'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
     'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
   ];
-  const thaiDateStr = `${reqDate.getDate()} ${thaiMonths[reqDate.getMonth()]} ${reqDate.getFullYear() + 543}`;
+  const thaiDateStr = !isNaN(reqDate.getTime())
+    ? `${reqDate.getDate()} ${thaiMonths[reqDate.getMonth()]} ${reqDate.getFullYear() + 543}`
+    : (repairRequest.sentDate || repairRequest.createdAt || '');
 
   // Interactive Form State for ALL input fields in the official document
   const [govAgency, setGovAgency] = useState('โรงพยาบาลสังขละบุรี ฝ่ายบริหารทั่วไป โทร. ๐๓๔-๕๙๕๐๓๐ ต่อ ๒๐๕');
   const [docNoSub, setDocNoSub] = useState(repairRequest.repairNo ? repairRequest.repairNo.replace('REP-', '') : '2568/01');
   const [docDate, setDocDate] = useState(thaiDateStr);
+
+  React.useEffect(() => {
+    setDocDate(thaiDateStr);
+  }, [repairRequest.id, repairRequest.sentDate, repairRequest.createdAt]);
   const [deptName, setDeptName] = useState(dept?.name || 'กลุ่มงานทั่วไป');
   const [category, setCategory] = useState<'การแพทย์' | 'สำนักงาน' | 'ยานพาหนะ' | 'อาคาร' | 'สิ่งก่อสร้าง' | 'งานบ้านงานครัว' | 'อุปกรณ์และอื่นๆ'>('สำนักงาน');
 
@@ -678,13 +685,16 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
         `}</style>
 
         <div className="a4-page" ref={printRef}>
-          {/* ตราครุฑ */}
+          {/* ตราครุฑ 3 ซม. (ดึงจากตั้งค่าระบบ หรือรูปตราครุฑมาตรฐาน) */}
           <img 
-            src="/assets/aistudio/________9ad4c321.png" 
+            src={settings.emblemUrl || './assets/aistudio/________3cm_fbf2f514.png'} 
             alt="ตราครุฑ" 
-            style={{ position: 'absolute', top: '13px', left: '70px', width: '1.38cm', height: '1.5cm', objectFit: 'cover' }}
+            style={{ position: 'absolute', top: '13px', left: '70px', width: '1.38cm', height: '1.5cm', objectFit: 'contain' }}
             onError={(e) => {
-              (e.target as HTMLImageElement).src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c9/Garuda_Emblem_of_Thailand.svg/300px-Garuda_Emblem_of_Thailand.svg.png';
+              const img = e.target as HTMLImageElement;
+              if (!img.src.includes('garuda_3cm.png')) {
+                img.src = './assets/garuda_3cm.png';
+              }
             }}
           />
 

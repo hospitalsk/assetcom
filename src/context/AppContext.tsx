@@ -43,13 +43,21 @@ import {
   syncRepairRequestToSupabase, 
   syncBorrowRequestToSupabase, 
   syncInventoryItemToSupabase, 
+  syncDepartmentToSupabase,
+  deleteDepartmentFromSupabase,
+  syncUserToSupabase,
+  deleteUserFromSupabase,
   syncSettingsToSupabase, 
-  syncAuditLogToSupabase 
+  syncAuditLogToSupabase,
+  seedAllDataToSupabase,
+  clearOperationalDataInSupabase
 } from '../utils/supabaseService';
 import { checkSupabaseConnection } from '../utils/supabaseClient';
 
 interface AppContextType {
   supabaseStatus: 'connecting' | 'connected' | 'offline';
+  refreshSupabaseData: () => Promise<boolean>;
+  pushAllToSupabase: () => Promise<{ success: boolean; message: string }>;
   currentUser: UserProfile;
   isLoggedIn: boolean;
   login: (email: string, password?: string) => boolean;
@@ -130,6 +138,7 @@ interface AppContextType {
   markNotificationAsRead: (id: string) => void;
   updateSettings: (newSettings: Partial<SystemSettings>) => void;
   saveSettingsToSupabase: (newSettings: Partial<SystemSettings>) => Promise<{ success: boolean; data?: any; error?: any }>;
+  clearOperationalData: () => Promise<{ success: boolean; message: string }>;
   resetToDefaultData: () => void;
 }
 
@@ -137,6 +146,41 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
+
+  // One-time cleanup migration for pre-seeded operational data & emblem upgrade
+  useState(() => {
+    try {
+      const migrationKey = 'smart_asset_clean_reset_v2';
+      if (!localStorage.getItem(migrationKey)) {
+        const keysToClear = [
+          'smart_asset_assets',
+          'smart_asset_inventory_items',
+          'smart_asset_inventory_transactions',
+          'smart_asset_borrow_requests',
+          'smart_asset_repair_requests',
+          'smart_asset_budget_plans',
+          'smart_asset_notifications',
+          'smart_asset_audit_logs',
+          'smart_asset_line_logs'
+        ];
+        keysToClear.forEach(k => localStorage.removeItem(k));
+
+        // Ensure emblemUrl uses the uploaded Garuda 3cm emblem if previously set to hospital logo or old file
+        const savedSettingsRaw = localStorage.getItem('smart_asset_settings');
+        if (savedSettingsRaw) {
+          const parsed = JSON.parse(savedSettingsRaw);
+          if (!parsed.emblemUrl || parsed.emblemUrl.includes('Logo_SK') || parsed.emblemUrl.includes('9ad4c321')) {
+            parsed.emblemUrl = './assets/aistudio/________3cm_fbf2f514.png';
+            localStorage.setItem('smart_asset_settings', JSON.stringify(parsed));
+          }
+        }
+        localStorage.setItem(migrationKey, 'true');
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return true;
+  });
 
   const loadStorage = <T,>(key: string, fallback: T): T => {
     try {
@@ -171,11 +215,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => loadStorage('audit_logs', initialAuditLogs));
   const [settings, setSettings] = useState<SystemSettings>(() => {
     const loaded = loadStorage('settings', defaultSystemSettings);
-    // If previous placeholder logo was stored in localStorage, automatically update to new attached logo
-    if (!loaded.logoUrl || loaded.logoUrl.includes('unsplash') || loaded.logoUrl.includes('placeholder') || loaded.logoUrl.startsWith('/assets/')) {
-      return { ...loaded, logoUrl: './assets/aistudio/Logo_SK_26693d5e.png', emblemUrl: './assets/aistudio/Logo_SK_26693d5e.png', organizationName: defaultSystemSettings.organizationName };
-    }
-    return loaded;
+    // If previous placeholder logo was stored in localStorage, automatically update to attached logos
+    const nextLogo = (!loaded.logoUrl || loaded.logoUrl.includes('unsplash') || loaded.logoUrl.includes('placeholder') || loaded.logoUrl.startsWith('/assets/'))
+      ? './assets/aistudio/Logo_SK_26693d5e.png'
+      : loaded.logoUrl;
+    const nextEmblem = (!loaded.emblemUrl || loaded.emblemUrl.includes('Logo_SK') || loaded.emblemUrl.includes('9ad4c321') || loaded.emblemUrl.includes('unsplash') || loaded.emblemUrl.includes('placeholder'))
+      ? './assets/aistudio/________3cm_fbf2f514.png'
+      : loaded.emblemUrl;
+    return {
+      ...loaded,
+      logoUrl: nextLogo,
+      emblemUrl: nextEmblem,
+      organizationName: loaded.organizationName || defaultSystemSettings.organizationName
+    };
   });
 
   const [supabaseStatus, setSupabaseStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
@@ -190,13 +242,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSupabaseStatus('connected');
         const data = await fetchAllSupabaseData();
         if (data && isMounted) {
-          if (data.assets && data.assets.length > 0) setAssets(data.assets);
-          if (data.repairRequests && data.repairRequests.length > 0) setRepairRequests(data.repairRequests);
-          if (data.borrowRequests && data.borrowRequests.length > 0) setBorrowRequests(data.borrowRequests);
-          if (data.inventoryItems && data.inventoryItems.length > 0) setInventoryItems(data.inventoryItems);
+          if (data.assetsOk) setAssets(data.assets);
+          if (data.repairsOk) setRepairRequests(data.repairRequests);
+          if (data.borrowsOk) setBorrowRequests(data.borrowRequests);
+          if (data.inventoryOk) setInventoryItems(data.inventoryItems);
           if (data.departments && data.departments.length > 0) setDepartments(data.departments);
           if (data.users && data.users.length > 0) setUsers(data.users);
-          if (data.settings) setSettings(prev => ({ ...prev, ...data.settings }));
+          if (data.settings) {
+            setSettings(prev => ({
+              ...prev,
+              ...data.settings,
+              emblemUrl: data.settings?.emblemUrl || prev.emblemUrl || './assets/aistudio/________3cm_fbf2f514.png'
+            }));
+          }
         }
       } else {
         setSupabaseStatus('offline');
@@ -205,6 +263,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     initSupabase();
     return () => { isMounted = false; };
   }, []);
+
+  const refreshSupabaseData = async (): Promise<boolean> => {
+    setSupabaseStatus('connecting');
+    const isOnline = await checkSupabaseConnection();
+    if (isOnline) {
+      setSupabaseStatus('connected');
+      const data = await fetchAllSupabaseData();
+      if (data) {
+        if (data.assetsOk) setAssets(data.assets);
+        if (data.repairsOk) setRepairRequests(data.repairRequests);
+        if (data.borrowsOk) setBorrowRequests(data.borrowRequests);
+        if (data.inventoryOk) setInventoryItems(data.inventoryItems);
+        if (data.departments && data.departments.length > 0) setDepartments(data.departments);
+        if (data.users && data.users.length > 0) setUsers(data.users);
+        if (data.settings) {
+          setSettings(prev => ({
+            ...prev,
+            ...data.settings,
+            emblemUrl: data.settings?.emblemUrl || prev.emblemUrl || './assets/aistudio/________3cm_fbf2f514.png'
+          }));
+        }
+        return true;
+      }
+    } else {
+      setSupabaseStatus('offline');
+    }
+    return false;
+  };
+
+  const pushAllToSupabase = async (): Promise<{ success: boolean; message: string }> => {
+    setSupabaseStatus('connecting');
+    const isOnline = await checkSupabaseConnection();
+    if (!isOnline) {
+      setSupabaseStatus('offline');
+      return { success: false, message: 'ไม่สามารถเชื่อมต่อกับ Supabase ได้ (Offline)' };
+    }
+    setSupabaseStatus('connected');
+    const result = await seedAllDataToSupabase({
+      assets,
+      repairRequests,
+      borrowRequests,
+      inventoryItems,
+      departments,
+      users,
+      settings
+    });
+    return result;
+  };
 
   // Sync to Storage
   useEffect(() => { 
@@ -618,20 +724,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addDepartment = (dept: Omit<Department, 'id'>) => {
     const newDept = { ...dept, id: generateUniqueId('dept') };
     setDepartments(prev => [...prev, newDept]);
+    syncDepartmentToSupabase(newDept);
     addAuditLog('CREATE', 'Settings', newDept.id, `เพิ่มหน่วยงาน ${newDept.name}`);
   };
 
   const updateDepartment = (id: string, dept: Partial<Department>) => {
-    setDepartments(prev => prev.map(d => d.id === id ? { ...d, ...dept } : d));
+    setDepartments(prev => prev.map(d => {
+      if (d.id === id) {
+        const updated = { ...d, ...dept };
+        syncDepartmentToSupabase(updated);
+        return updated;
+      }
+      return d;
+    }));
   };
 
   const deleteDepartment = (id: string) => {
     setDepartments(prev => prev.filter(d => d.id !== id));
+    deleteDepartmentFromSupabase(id);
   };
 
   const addUser = (user: Omit<UserProfile, 'id'>) => {
     const newUser = { ...user, id: generateUniqueId('usr') };
     setUsers(prev => [...prev, newUser]);
+    syncUserToSupabase(newUser);
     addAuditLog('CREATE', 'Settings', newUser.id, `เพิ่มผู้ใช้งาน ${newUser.name}`);
   };
 
@@ -639,6 +755,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers(prev => prev.map(u => {
       if (u.id === id) {
         const updated = { ...u, ...user };
+        syncUserToSupabase(updated);
         addAuditLog('UPDATE', 'Settings', id, `แก้ไขผู้ใช้งาน ${updated.name}`);
         return updated;
       }
@@ -648,6 +765,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteUser = (id: string) => {
     setUsers(prev => prev.filter(u => u.id !== id));
+    deleteUserFromSupabase(id);
   };
 
   const addRole = (roleName: string) => {
@@ -823,6 +941,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return result;
   };
 
+  const clearOperationalData = async (): Promise<{ success: boolean; message: string }> => {
+    setAssets([]);
+    setInventoryItems([]);
+    setInventoryTransactions([]);
+    setBorrowRequests([]);
+    setRepairRequests([]);
+    setBudgetPlans([]);
+    setNotifications([]);
+    setAuditLogs([]);
+
+    const keysToClear = [
+      'smart_asset_assets',
+      'smart_asset_inventory_items',
+      'smart_asset_inventory_transactions',
+      'smart_asset_borrow_requests',
+      'smart_asset_repair_requests',
+      'smart_asset_budget_plans',
+      'smart_asset_notifications',
+      'smart_asset_audit_logs',
+      'smart_asset_line_logs'
+    ];
+    keysToClear.forEach(k => localStorage.removeItem(k));
+
+    const res = await clearOperationalDataInSupabase();
+    return res;
+  };
+
   const resetToDefaultData = () => {
     const roleClean = (currentUser?.role || '').toLowerCase().trim();
     if (roleClean !== 'admin' && !roleClean.includes('admin')) {
@@ -839,7 +984,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider value={{
       supabaseStatus,
+      refreshSupabaseData,
+      pushAllToSupabase,
       saveSettingsToSupabase,
+      clearOperationalData,
       currentUser,
       isLoggedIn,
       login,

@@ -19,7 +19,13 @@ import {
   AlertCircle,
   MapPin,
   Check,
-  X
+  X,
+  RefreshCw,
+  CloudDownload,
+  CloudUpload,
+  RefreshCcw,
+  Upload,
+  RotateCcw
 } from 'lucide-react';
 import { UserRole, UserProfile, AssetCategory } from '../types';
 import { getLineApiLogs, clearLineApiLogs, dispatchLineOaNotification } from '../utils/lineOaService';
@@ -30,6 +36,12 @@ export const SettingsView: React.FC = () => {
     updateSettings, 
     saveSettingsToSupabase,
     supabaseStatus,
+    refreshSupabaseData,
+    pushAllToSupabase,
+    clearOperationalData,
+    repairRequests,
+    inventoryItems,
+    borrowRequests,
     departments, 
     addDepartment, 
     deleteDepartment,
@@ -69,6 +81,12 @@ export const SettingsView: React.FC = () => {
 
   const [activeSubTab, setActiveSubTab] = useState<'general' | 'departments' | 'users' | 'roles' | 'dropdowns' | 'line_oa' | 'audit' | 'backup'>('general');
   const [dropdownActiveSubTab, setDropdownActiveSubTab] = useState<'categories' | 'budgets' | 'acquisitions' | 'statuses' | 'locations'>('categories');
+
+  const [isFetchingSupabase, setIsFetchingSupabase] = useState(false);
+  const [isPushingSupabase, setIsPushingSupabase] = useState(false);
+  const [isClearingOperational, setIsClearingOperational] = useState(false);
+  const [supabaseSyncMessage, setSupabaseSyncMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [generalSaveMessage, setGeneralSaveMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [formSettings, setFormSettings] = useState(settings);
   const [lineTestSuccess, setLineTestSuccess] = useState<string | null>(null);
@@ -113,10 +131,38 @@ export const SettingsView: React.FC = () => {
   const [editingRoleOldName, setEditingRoleOldName] = useState<string | null>(null);
   const [editingRoleNewName, setEditingRoleNewName] = useState('');
 
+  const DEFAULT_GARUDA_EMBLEM = './assets/aistudio/________3cm_fbf2f514.png';
+
+  const handleEmblemFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setFormSettings((prev) => ({ ...prev, emblemUrl: reader.result as string }));
+        setGeneralSaveMessage(null);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings(formSettings);
-    await saveSettingsToSupabase(formSettings);
+    setGeneralSaveMessage(null);
+    const normalizedSettings = {
+      ...formSettings,
+      emblemUrl: formSettings.emblemUrl?.trim() || DEFAULT_GARUDA_EMBLEM
+    };
+    setFormSettings(normalizedSettings);
+    updateSettings(normalizedSettings);
+    const saved = await saveSettingsToSupabase(normalizedSettings);
+    setGeneralSaveMessage({
+      type: 'success',
+      text: saved
+        ? 'บันทึกการตั้งค่าและโลโก้ตราครุฑลง Supabase เรียบร้อยแล้ว'
+        : 'บันทึกการตั้งค่าในเครื่องเรียบร้อยแล้ว'
+    });
   };
 
   const handleCreateDept = (e: React.FormEvent) => {
@@ -289,10 +335,84 @@ export const SettingsView: React.FC = () => {
                 </div>
               )}
             </div>
+
+            <div className="pt-3 border-t border-slate-100 space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700">
+                    โลโก้ตราครุฑ / แบบฟอร์มบันทึกข้อความขออนุมัติซ่อมบำรุงพัสดุ-ครุภัณฑ์ (Emblem URL)
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    ใช้แสดงที่หัวกระดาษแบบฟอร์มบันทึกข้อความขออนุมัติซ่อมบำรุงพัสดุ-ครุภัณฑ์
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <label className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold cursor-pointer inline-flex items-center space-x-1.5 transition-colors">
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>อัปโหลดรูปใหม่</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEmblemFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormSettings({ ...formSettings, emblemUrl: DEFAULT_GARUDA_EMBLEM });
+                      setGeneralSaveMessage(null);
+                    }}
+                    className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-[11px] font-bold inline-flex items-center space-x-1.5 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>ใช้รูปตราครุฑ 3cm</span>
+                  </button>
+                </div>
+              </div>
+              <input
+                type="text"
+                value={formSettings.emblemUrl ?? DEFAULT_GARUDA_EMBLEM}
+                onChange={(e) => {
+                  setFormSettings({ ...formSettings, emblemUrl: e.target.value });
+                  setGeneralSaveMessage(null);
+                }}
+                placeholder={DEFAULT_GARUDA_EMBLEM}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
+              />
+              <div className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center space-x-4">
+                <div className="w-16 h-16 bg-white rounded-lg border border-slate-200 flex items-center justify-center p-1.5 shrink-0 shadow-2xs">
+                  <img
+                    src={formSettings.emblemUrl || DEFAULT_GARUDA_EMBLEM}
+                    onError={(e) => {
+                      e.currentTarget.src = './assets/garuda_3cm.png';
+                    }}
+                    alt="ตัวอย่างตราครุฑแบบฟอร์มบันทึกข้อความ"
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <div className="text-[11px] text-slate-600 space-y-0.5">
+                  <div className="font-bold text-slate-800">ตัวอย่างตราครุฑในแบบฟอร์มบันทึกข้อความขออนุมัติซ่อมบำรุงพัสดุ-ครุภัณฑ์</div>
+                  <div>ขนาดมาตรฐาน 3 ซม. สำหรับหัวบันทึกข้อความราชการและการพิมพ์ PDF/A4</div>
+                </div>
+              </div>
+            </div>
+
+            {generalSaveMessage && (
+              <div className={`p-3 rounded-xl text-xs font-bold flex items-center space-x-2 border ${
+                generalSaveMessage.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border-rose-200'
+              }`}>
+                {generalSaveMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+                <span>{generalSaveMessage.text}</span>
+              </div>
+            )}
+
             <div className="flex justify-end pt-4 border-t border-slate-100">
               <button
                 type="submit"
-                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center space-x-1.5 shadow-md shadow-blue-200"
+                className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center space-x-1.5 shadow-md shadow-blue-200 cursor-pointer"
               >
                 <Save className="w-4 h-4" />
                 <span>บันทึกการตั้งค่า</span>
@@ -1367,34 +1487,206 @@ export const SettingsView: React.FC = () => {
       )}
 
       {activeSubTab === 'backup' && (
-        <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-100 max-w-xl space-y-4">
-          <h3 className="text-sm font-bold text-slate-900">สำรองและกู้คืนข้อมูล</h3>
-          <p className="text-xs text-slate-600 leading-relaxed">
-            ท่านสามารถสำรองข้อมูลทะเบียนครุภัณฑ์และวัสดุทั้งหมดออกเป็นไฟล์ JSON เพื่อเก็บไว้เป็นหลักฐาน หรือรีเซ็ตข้อมูลระบบกลับสู่ค่าเริ่มต้น
-          </p>
-          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-2">
-            <button
-              onClick={() => {
-                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(localStorage));
-                const downloadAnchor = document.createElement('a');
-                downloadAnchor.setAttribute("href", dataStr);
-                downloadAnchor.setAttribute("download", `smart_asset_backup_${new Date().toISOString().split('T')[0]}.json`);
-                document.body.appendChild(downloadAnchor);
-                downloadAnchor.click();
-                downloadAnchor.remove();
-              }}
-              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm text-center"
-            >
-              Export JSON Backup
-            </button>
-            {isAdminOrSuper && (
-              <button
-                onClick={resetToDefaultData}
-                className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-colors text-center"
-              >
-                รีเซ็ตข้อมูลเริ่มต้น (Factory Reset - เฉพาะ Admin)
-              </button>
+        <div className="space-y-6 max-w-3xl">
+          {/* Supabase Live Integration & Data Fetching Card */}
+          <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                    <span>เชื่อมต่อและดึงข้อมูล Supabase</span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                      supabaseStatus === 'connected' 
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                        : supabaseStatus === 'connecting'
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300 animate-pulse'
+                        : 'bg-rose-100 text-rose-800 border border-rose-300'
+                    }`}>
+                      {supabaseStatus === 'connected' && '🟢 Supabase Online (พร้อมใช้งาน)'}
+                      {supabaseStatus === 'connecting' && '🟡 กำลังตรวจสอบการเชื่อมต่อ...'}
+                      {supabaseStatus === 'offline' && '🔴 Offline Mode'}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    ดึงข้อมูลเรียลไทม์และซิงค์ตารางฐานข้อมูลทั้งหมดกับ Supabase (Assets, Repairs, Borrows, Users, Departments, Settings)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Current Data Count Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                <div className="text-[10px] font-bold text-slate-500">📦 ทะเบียนครุภัณฑ์</div>
+                <div className="text-lg font-black text-slate-900 mt-1">{assets.length} รายการ</div>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                <div className="text-[10px] font-bold text-slate-500">🛠️ ใบแจ้งซ่อมบำรุง</div>
+                <div className="text-lg font-black text-slate-900 mt-1">{repairRequests.length} รายการ</div>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                <div className="text-[10px] font-bold text-slate-500">🔄 การยืม-คืนพัสดุ</div>
+                <div className="text-lg font-black text-slate-900 mt-1">{borrowRequests.length} รายการ</div>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                <div className="text-[10px] font-bold text-slate-500">🧪 วัสดุสิ้นเปลือง</div>
+                <div className="text-lg font-black text-slate-900 mt-1">{inventoryItems.length} รายการ</div>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                <div className="text-[10px] font-bold text-slate-500">🏢 หน่วยงาน/ฝ่าย</div>
+                <div className="text-lg font-black text-slate-900 mt-1">{departments.length} หน่วยงาน</div>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                <div className="text-[10px] font-bold text-slate-500">👥 ผู้ใช้งานระบบ</div>
+                <div className="text-lg font-black text-slate-900 mt-1">{users.length} บัญชี</div>
+              </div>
+            </div>
+
+            {/* Sync Feedback Message */}
+            {supabaseSyncMessage && (
+              <div className={`p-3.5 rounded-xl text-xs font-bold flex items-center space-x-2 border ${
+                supabaseSyncMessage.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border-rose-200'
+              }`}>
+                {supabaseSyncMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+                <span>{supabaseSyncMessage.text}</span>
+              </div>
             )}
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row items-center gap-3 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isFetchingSupabase}
+                onClick={async () => {
+                  setIsFetchingSupabase(true);
+                  setSupabaseSyncMessage(null);
+                  try {
+                    const ok = await refreshSupabaseData();
+                    if (ok) {
+                      setSupabaseSyncMessage({
+                        type: 'success',
+                        text: 'ดึงข้อมูลล่าสุดจาก Supabase เข้าสู่ระบบเรียบร้อยแล้ว!'
+                      });
+                    } else {
+                      setSupabaseSyncMessage({
+                        type: 'error',
+                        text: 'ไม่สามารถดึงข้อมูลจาก Supabase ได้ กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต'
+                      });
+                    }
+                  } catch (e: any) {
+                    setSupabaseSyncMessage({
+                      type: 'error',
+                      text: `เกิดข้อผิดพลาด: ${e?.message || e}`
+                    });
+                  } finally {
+                    setIsFetchingSupabase(false);
+                  }
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                <CloudDownload className={`w-4 h-4 ${isFetchingSupabase ? 'animate-bounce' : ''}`} />
+                <span>{isFetchingSupabase ? 'กำลังดึงข้อมูล Supabase...' : '📥 ดึงข้อมูลล่าสุดจาก Supabase (Fetch Live)'}</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isPushingSupabase}
+                onClick={async () => {
+                  if (!window.confirm('คุณต้องการส่งข้อมูลปัจจุบันทั้งหมดขึ้นไปบันทึกบน Supabase ใช่หรือไม่?')) return;
+                  setIsPushingSupabase(true);
+                  setSupabaseSyncMessage(null);
+                  try {
+                    const res = await pushAllToSupabase();
+                    if (res.success) {
+                      setSupabaseSyncMessage({
+                        type: 'success',
+                        text: res.message
+                      });
+                    } else {
+                      setSupabaseSyncMessage({
+                        type: 'error',
+                        text: res.message
+                      });
+                    }
+                  } catch (e: any) {
+                    setSupabaseSyncMessage({
+                      type: 'error',
+                      text: `เกิดข้อผิดพลาด: ${e?.message || e}`
+                    });
+                  } finally {
+                    setIsPushingSupabase(false);
+                  }
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                <CloudUpload className={`w-4 h-4 ${isPushingSupabase ? 'animate-bounce' : ''}`} />
+                <span>{isPushingSupabase ? 'กำลังซิงค์ขึ้น Supabase...' : '📤 ส่ง/บันทึกข้อมูลขึ้น Supabase (Push/Seed)'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Local JSON Backup & Reset */}
+          <div className="bg-white p-6 rounded-2xl shadow-xs border border-slate-200 space-y-4">
+            <h3 className="text-sm font-bold text-slate-900">สำรองและกู้คืนข้อมูลแบบ Local JSON</h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              ท่านสามารถสำรองข้อมูลทะเบียนครุภัณฑ์และวัสดุทั้งหมดออกเป็นไฟล์ JSON เพื่อเก็บไว้เป็นหลักฐาน หรือรีเซ็ตข้อมูลระบบกลับสู่ค่าเริ่มต้น
+            </p>
+            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(localStorage));
+                  const downloadAnchor = document.createElement('a');
+                  downloadAnchor.setAttribute("href", dataStr);
+                  downloadAnchor.setAttribute("download", `smart_asset_backup_${new Date().toISOString().split('T')[0]}.json`);
+                  document.body.appendChild(downloadAnchor);
+                  downloadAnchor.click();
+                  downloadAnchor.remove();
+                }}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors shadow-xs text-center cursor-pointer"
+              >
+                Export JSON Backup
+              </button>
+              {isAdminOrSuper && (
+                <>
+                  <button
+                    type="button"
+                    disabled={isClearingOperational}
+                    onClick={async () => {
+                      if (!window.confirm('คุณต้องการล้างรายการทะเบียนครุภัณฑ์ คลังวัสดุ ยืม-คืน งานซ่อมบำรุง ตรวจนับ และแผนงบประมาณทั้งหมด (ทั้งในเครื่องและ Supabase) ใช่หรือไม่?')) {
+                        return;
+                      }
+                      setIsClearingOperational(true);
+                      setSupabaseSyncMessage(null);
+                      try {
+                        const res = await clearOperationalData();
+                        setSupabaseSyncMessage({
+                          type: res.success ? 'success' : 'error',
+                          text: res.message
+                        });
+                      } finally {
+                        setIsClearingOperational(false);
+                      }
+                    }}
+                    className="px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl text-xs font-bold transition-colors text-center cursor-pointer disabled:opacity-50"
+                  >
+                    {isClearingOperational ? 'กำลังล้างข้อมูล...' : 'ล้างรายการข้อมูลปฏิบัติการทั้งหมด (เฉพาะ Admin)'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetToDefaultData}
+                    className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold transition-colors text-center cursor-pointer"
+                  >
+                    รีเซ็ตข้อมูลเริ่มต้น (Factory Reset - เฉพาะ Admin)
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

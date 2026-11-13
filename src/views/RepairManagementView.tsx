@@ -6,7 +6,7 @@ import { OfficialRepairPrintModal } from '../components/OfficialRepairPrintModal
 import { MemoFormData, printOfficialMemoDocument, openOfficialMemoInNewWindow } from '../utils/printMemoHelper';
 
 export const RepairManagementView: React.FC = () => {
-  const { repairRequests, assets, departments, users, addRepairRequest, currentUser, getActiveRepairForAsset } = useApp();
+  const { repairRequests, assets, departments, users, addRepairRequest, currentUser, getActiveRepairForAsset, settings } = useApp();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [repairForPrint, setRepairForPrint] = useState<any>(null);
@@ -112,6 +112,7 @@ export const RepairManagementView: React.FC = () => {
   };
 
   const getMemoDataFromForm = (repairNo?: string): MemoFormData => ({
+    emblemUrl: settings.emblemUrl,
     agency: formData.agency,
     docNumber: repairNo ? repairNo.replace('REP-', '') : formData.docNumber,
     docDate: formData.docDate,
