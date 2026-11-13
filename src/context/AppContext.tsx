@@ -729,19 +729,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateDepartment = (id: string, dept: Partial<Department>) => {
+    let updatedName = '';
     setDepartments(prev => prev.map(d => {
       if (d.id === id) {
         const updated = { ...d, ...dept };
+        updatedName = updated.name;
         syncDepartmentToSupabase(updated);
         return updated;
       }
       return d;
     }));
+    addAuditLog('UPDATE', 'Settings', id, `แก้ไขข้อมูลหน่วยงาน ${updatedName || id}`);
   };
 
   const deleteDepartment = (id: string) => {
+    const target = departments.find(d => d.id === id);
     setDepartments(prev => prev.filter(d => d.id !== id));
     deleteDepartmentFromSupabase(id);
+    addAuditLog('DELETE', 'Settings', id, `ลบหน่วยงาน ${target?.name || id}`);
   };
 
   const addUser = (user: Omit<UserProfile, 'id'>) => {

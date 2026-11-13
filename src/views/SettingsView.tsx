@@ -27,7 +27,7 @@ import {
   Upload,
   RotateCcw
 } from 'lucide-react';
-import { UserRole, UserProfile, AssetCategory } from '../types';
+import { UserRole, UserProfile, AssetCategory, Department } from '../types';
 import { getLineApiLogs, clearLineApiLogs, dispatchLineOaNotification } from '../utils/lineOaService';
 
 export const SettingsView: React.FC = () => {
@@ -44,6 +44,7 @@ export const SettingsView: React.FC = () => {
     borrowRequests,
     departments, 
     addDepartment, 
+    updateDepartment,
     deleteDepartment,
     users, 
     addUser, 
@@ -112,9 +113,10 @@ export const SettingsView: React.FC = () => {
   const [newOptionInput, setNewOptionInput] = useState('');
   const [editingOption, setEditingOption] = useState<{ type: 'budget' | 'acquisition' | 'status' | 'location'; oldVal: string; newVal: string } | null>(null);
 
-  // New Department form
-  const [newDept, setNewDept] = useState({ code: '', name: '', building: '', floor: '1', headName: '', phone: '' });
+  // New & Edit Department form
+  const [newDept, setNewDept] = useState({ code: '', name: '', building: '', floor: '', headName: '', phone: '' });
   const [showAddDeptModal, setShowAddDeptModal] = useState(false);
+  const [editDeptData, setEditDeptData] = useState<Department | null>(null);
 
   // New User form
   const [newUser, setNewUser] = useState({ name: '', email: '', password: 'password123', role: (roles[0] || 'General User') as UserRole, departmentId: departments[0]?.id || '', position: '', phone: '', status: 'Active' as const });
@@ -167,9 +169,31 @@ export const SettingsView: React.FC = () => {
 
   const handleCreateDept = (e: React.FormEvent) => {
     e.preventDefault();
-    addDepartment(newDept);
+    addDepartment({
+      ...newDept,
+      code: newDept.code.trim(),
+      name: newDept.name.trim(),
+      building: newDept.building.trim(),
+      floor: newDept.floor.trim(),
+      headName: newDept.headName.trim(),
+      phone: newDept.phone.trim()
+    });
     setShowAddDeptModal(false);
-    setNewDept({ code: '', name: '', building: '', floor: '1', headName: '', phone: '' });
+    setNewDept({ code: '', name: '', building: '', floor: '', headName: '', phone: '' });
+  };
+
+  const handleUpdateDeptSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editDeptData) return;
+    updateDepartment(editDeptData.id, {
+      code: editDeptData.code.trim(),
+      name: editDeptData.name.trim(),
+      building: editDeptData.building.trim(),
+      floor: editDeptData.floor.trim(),
+      headName: editDeptData.headName.trim(),
+      phone: editDeptData.phone.trim()
+    });
+    setEditDeptData(null);
   };
 
   const handleCreateUser = (e: React.FormEvent) => {
@@ -199,7 +223,12 @@ export const SettingsView: React.FC = () => {
     setNewPasswordInput('');
   };
 
-  const isAdminOrSuper = currentUser.role === 'Super Admin' || currentUser.role === 'Admin' || (currentUser.role && currentUser.role.toLowerCase().includes('admin'));
+  const isAdminOrSuper =
+    currentUser.username?.toLowerCase() === 'admin' ||
+    currentUser.email?.toLowerCase().startsWith('admin@') ||
+    currentUser.role === 'Super Admin' ||
+    currentUser.role === 'Admin' ||
+    (currentUser.role && currentUser.role.toLowerCase().includes('admin'));
 
   return (
     <div className="space-y-6">
@@ -733,8 +762,9 @@ export const SettingsView: React.FC = () => {
             <span className="text-xs font-bold text-slate-800">รายการหน่วยงานภายในองค์กร</span>
             {isAdminOrSuper && (
               <button
+                type="button"
                 onClick={() => setShowAddDeptModal(true)}
-                className="flex items-center space-x-1 px-3 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-sm"
+                className="flex items-center space-x-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 <span>เพิ่มหน่วยงานใหม่</span>
@@ -755,26 +785,64 @@ export const SettingsView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {departments.map(d => (
-                    <tr key={d.id} className="hover:bg-slate-50">
-                      <td className="p-4 font-bold text-blue-600">{d.code}</td>
-                      <td className="p-4 font-bold text-slate-900">{d.name}</td>
-                      <td className="p-4 text-slate-600">{d.building} ชั้น {d.floor}</td>
-                      <td className="p-4 text-slate-700">{d.headName}</td>
-                      <td className="p-4 text-slate-600">{d.phone}</td>
-                      {isAdminOrSuper && (
-                        <td className="p-4 text-center">
-                          <button
-                            onClick={() => deleteDepartment(d.id)}
-                            className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100"
-                            title="ลบหน่วยงาน"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      )}
+                  {departments.length === 0 ? (
+                    <tr>
+                      <td colSpan={isAdminOrSuper ? 6 : 5} className="p-8 text-center text-slate-400">
+                        ยังไม่มีข้อมูลหน่วยงานในระบบ
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    departments.map(d => {
+                      const floorLabel = d.floor
+                        ? d.floor.startsWith('ชั้น')
+                          ? d.floor
+                          : `ชั้น ${d.floor}`
+                        : '';
+                      const locationDisplay = [
+                        d.building,
+                        floorLabel && !d.building?.includes(floorLabel) && !d.building?.includes(`ชั้น ${d.floor}`)
+                          ? floorLabel
+                          : ''
+                      ]
+                        .filter(Boolean)
+                        .join(' ');
+                      return (
+                        <tr key={d.id} className="hover:bg-slate-50">
+                          <td className="p-4 font-bold text-blue-600">{d.code}</td>
+                          <td className="p-4 font-bold text-slate-900">{d.name}</td>
+                          <td className="p-4 text-slate-600">{locationDisplay || '-'}</td>
+                          <td className="p-4 text-slate-700">{d.headName || '-'}</td>
+                          <td className="p-4 text-slate-600">{d.phone || '-'}</td>
+                          {isAdminOrSuper && (
+                            <td className="p-4 text-center">
+                              <div className="flex items-center justify-center space-x-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditDeptData({ ...d })}
+                                  className="p-1.5 rounded-lg bg-amber-50 text-amber-600 hover:bg-amber-100 cursor-pointer transition-colors"
+                                  title="แก้ไขหน่วยงาน"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (window.confirm(`ยืนยันการลบหน่วยงาน "${d.name}" ใช่หรือไม่?`)) {
+                                      deleteDepartment(d.id);
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 cursor-pointer transition-colors"
+                                  title="ลบหน่วยงาน"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1697,7 +1765,7 @@ export const SettingsView: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
               <h3 className="text-base font-bold text-slate-900">เพิ่มหน่วยงานใหม่</h3>
-              <button onClick={() => setShowAddDeptModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+              <button type="button" onClick={() => setShowAddDeptModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">&times;</button>
             </div>
             <form onSubmit={handleCreateDept} className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -1709,7 +1777,7 @@ export const SettingsView: React.FC = () => {
                     placeholder="เช่น IT"
                     value={newDept.code}
                     onChange={(e) => setNewDept({ ...newDept, code: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -1720,7 +1788,7 @@ export const SettingsView: React.FC = () => {
                     placeholder="เช่น ศูนย์เทคโนโลยี"
                     value={newDept.name}
                     onChange={(e) => setNewDept({ ...newDept, name: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -1729,12 +1797,24 @@ export const SettingsView: React.FC = () => {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">อาคาร</label>
                   <input
                     type="text"
-                    placeholder="อาคารอำนวยการ"
+                    placeholder="เช่น อาคารอำนวยการ"
                     value={newDept.building}
                     onChange={(e) => setNewDept({ ...newDept, building: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">ชั้นของอาคาร</label>
+                  <input
+                    type="text"
+                    placeholder="เช่น ชั้น 1 หรือ 2"
+                    value={newDept.floor}
+                    onChange={(e) => setNewDept({ ...newDept, floor: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">หัวหน้าหน่วยงาน</label>
                   <input
@@ -1742,7 +1822,17 @@ export const SettingsView: React.FC = () => {
                     placeholder="ชื่อ-นามสกุล"
                     value={newDept.headName}
                     onChange={(e) => setNewDept({ ...newDept, headName: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">เบอร์โทร</label>
+                  <input
+                    type="text"
+                    placeholder="เช่น 034-595033 ต่อ 101"
+                    value={newDept.phone}
+                    onChange={(e) => setNewDept({ ...newDept, phone: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -1750,15 +1840,112 @@ export const SettingsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddDeptModal(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer"
                 >
                   บันทึก
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Department Modal */}
+      {editDeptData && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
+              <h3 className="text-base font-bold text-slate-900">แก้ไขข้อมูลหน่วยงาน</h3>
+              <button type="button" onClick={() => setEditDeptData(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">&times;</button>
+            </div>
+            <form onSubmit={handleUpdateDeptSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">รหัสหน่วยงาน</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="เช่น IT"
+                    value={editDeptData.code}
+                    onChange={(e) => setEditDeptData({ ...editDeptData, code: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">ชื่อหน่วยงาน</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="เช่น ศูนย์เทคโนโลยี"
+                    value={editDeptData.name}
+                    onChange={(e) => setEditDeptData({ ...editDeptData, name: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">อาคาร</label>
+                  <input
+                    type="text"
+                    placeholder="เช่น อาคารอำนวยการ"
+                    value={editDeptData.building}
+                    onChange={(e) => setEditDeptData({ ...editDeptData, building: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">ชั้นของอาคาร</label>
+                  <input
+                    type="text"
+                    placeholder="เช่น ชั้น 1 หรือ 2"
+                    value={editDeptData.floor}
+                    onChange={(e) => setEditDeptData({ ...editDeptData, floor: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">หัวหน้าหน่วยงาน</label>
+                  <input
+                    type="text"
+                    placeholder="ชื่อ-นามสกุล"
+                    value={editDeptData.headName}
+                    onChange={(e) => setEditDeptData({ ...editDeptData, headName: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">เบอร์โทร</label>
+                  <input
+                    type="text"
+                    placeholder="เช่น 034-595033 ต่อ 101"
+                    value={editDeptData.phone}
+                    onChange={(e) => setEditDeptData({ ...editDeptData, phone: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end space-x-2 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditDeptData(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  บันทึกการแก้ไข
                 </button>
               </div>
             </form>

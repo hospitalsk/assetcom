@@ -150,12 +150,12 @@ export const fetchAllSupabaseData = async () => {
 
     const departments: Department[] = (departmentsRes.data || []).map((row: any) => ({
       id: row.id,
-      name: row.name,
-      code: row.code,
-      building: row.building || 'อาคารอำนวยการ',
-      floor: row.floor || 'ชั้น 1',
-      headName: row.head_name || row.headName || 'หัวหน้าหน่วยงาน',
-      phone: row.phone || '034-595000'
+      name: row.name ?? '',
+      code: row.code ?? '',
+      building: row.building ?? '',
+      floor: row.floor ?? '',
+      headName: row.head_name ?? row.headName ?? '',
+      phone: row.phone ?? ''
     }));
 
     const users: UserProfile[] = (usersRes.data || []).map((row: any) => ({
