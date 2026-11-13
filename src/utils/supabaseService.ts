@@ -256,6 +256,8 @@ export const fetchAllSupabaseData = async () => {
         itemReceivedBy: row.item_received_by || row.itemReceivedBy || meta.itemReceivedBy,
         itemReceivedAt: row.item_received_at || row.itemReceivedAt || meta.itemReceivedAt,
 
+        memoData: row.memo_data || row.memoData || meta.memoData,
+
         createdAt: row.created_at || row.createdAt || new Date().toISOString()
       };
     });
@@ -519,7 +521,8 @@ export const syncRepairRequestToSupabase = async (repair: RepairRequest) => {
       maintCompletedAt: repair.maintCompletedAt,
       itemReceived: repair.itemReceived,
       itemReceivedBy: repair.itemReceivedBy,
-      itemReceivedAt: repair.itemReceivedAt
+      itemReceivedAt: repair.itemReceivedAt,
+      memoData: repair.memoData
     };
 
     const payload: Record<string, any> = {
@@ -539,7 +542,9 @@ export const syncRepairRequestToSupabase = async (repair: RepairRequest) => {
       technician_id: repair.technicianId || null,
       before_image_url: repair.beforeImageUrl || null,
       after_image_url: repair.afterImageUrl || null,
-      notes: repair.notes || null,
+      notes: repair.memoData
+        ? buildNotesWithMeta(repair.notes, REPAIR_META_PREFIX, workflowMeta)
+        : (repair.notes || null),
 
       department_head_approved: repair.departmentHeadApproved ?? null,
       department_head_approved_by: repair.departmentHeadApprovedBy || null,

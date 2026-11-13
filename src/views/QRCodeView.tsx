@@ -7,6 +7,7 @@ import { PrintDocumentModal } from '../components/PrintDocumentModal';
 import { PrintAllQRCodesModal } from '../components/PrintAllQRCodesModal';
 import { ScannedAssetDetailModal } from '../components/ScannedAssetDetailModal';
 import { Asset } from '../types';
+import { showSwalAlert } from '../utils/swal';
 
 export const QRCodeView: React.FC = () => {
   const { assets, departments, assetCategories, repairRequests, borrowRequests, settings, setActiveTab } = useApp();
@@ -49,7 +50,7 @@ export const QRCodeView: React.FC = () => {
     if (found) {
       setScannedAssetModal(found);
     } else {
-      alert(`ไม่พบข้อมูลครุภัณฑ์รหัส "${code}" ในระบบ`);
+      showSwalAlert('warning', 'ไม่พบครุภัณฑ์', `ไม่พบข้อมูลครุภัณฑ์รหัส "${code}" ในระบบ`);
     }
   };
 

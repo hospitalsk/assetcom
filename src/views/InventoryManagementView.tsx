@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Package, Plus, Search, CheckCircle, AlertTriangle, UserCheck, MapPin, Building2 } from 'lucide-react';
+import { showSwalAlert, showSwalToast } from '../utils/swal';
 
 export const InventoryManagementView: React.FC = () => {
   const { 
@@ -57,13 +58,14 @@ export const InventoryManagementView: React.FC = () => {
   const handleCreateItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!canReceiveInventory) {
-      alert('⚠️ สิทธิ์ไม่เพียงพอ! เฉพาะ user: admin, user: supply officer, และ user: IT officer เท่านั้นที่สามารถรับเข้าวัสดุได้');
+      showSwalAlert('error', 'สิทธิ์ไม่เพียงพอ!', 'เฉพาะ user: admin, user: supply officer, และ user: IT officer เท่านั้นที่สามารถรับเข้าวัสดุได้');
       return;
     }
     addInventoryItem({
       ...newItem,
       lastReceivedDate: new Date().toISOString().split('T')[0]
     });
+    showSwalToast('success', 'เพิ่มรายการวัสดุเรียบร้อยแล้ว');
     setShowAddModal(false);
     setNewItem({
       itemCode: `INV-${Math.floor(100 + Math.random() * 900)}`,
@@ -84,7 +86,7 @@ export const InventoryManagementView: React.FC = () => {
     if (!showTrxModal) return;
 
     if (showTrxModal.type === 'รับเข้าสต็อก' && !canReceiveInventory) {
-      alert('⚠️ สิทธิ์ไม่เพียงพอ! เฉพาะ user: admin, user: supply officer, และ user: IT officer เท่านั้นที่สามารถรับเข้าวัสดุได้');
+      showSwalAlert('error', 'สิทธิ์ไม่เพียงพอ!', 'เฉพาะ user: admin, user: supply officer, และ user: IT officer เท่านั้นที่สามารถรับเข้าวัสดุได้');
       return;
     }
     

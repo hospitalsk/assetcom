@@ -15,6 +15,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { showSwalAlert } from '../utils/swal';
 
 export const AssetManagementView: React.FC = () => {
   const { 
@@ -71,7 +72,7 @@ export const AssetManagementView: React.FC = () => {
   const handleCreateAsset = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.serialNumber) {
-      alert('กรุณากรอกชื่อครุภัณฑ์และ Serial Number ให้ครบถ้วน');
+      showSwalAlert('warning', 'ข้อมูลไม่ครบถ้วน', 'กรุณากรอกชื่อครุภัณฑ์และ Serial Number ให้ครบถ้วน');
       return;
     }
     const salvageValue = formData.purchasePrice * 0.1;
@@ -89,7 +90,7 @@ export const AssetManagementView: React.FC = () => {
       departmentId: targetDeptId,
       notes: `${showTransferModal.notes || ''} [โอนย้ายไปยังหน่วยงาน ${departments.find(d => d.id === targetDeptId)?.name} เมื่อ ${new Date().toLocaleDateString('th-TH')}]`
     });
-    alert('โอนย้ายหน่วยงานครุภัณฑ์สำเร็จเรียบร้อย');
+    showSwalAlert('success', 'โอนย้ายครุภัณฑ์สำเร็จ', 'โอนย้ายหน่วยงานครุภัณฑ์สำเร็จเรียบร้อย');
     setShowTransferModal(null);
     setTransferReason('');
   };

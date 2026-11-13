@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { UserRole, UserProfile, AssetCategory, Department } from '../types';
 import { getLineApiLogs, clearLineApiLogs, dispatchLineOaNotification } from '../utils/lineOaService';
+import { showSwalAlert, showSwalToast, confirmSwal } from '../utils/swal';
 
 export const SettingsView: React.FC = () => {
   const { 
@@ -200,14 +201,14 @@ export const SettingsView: React.FC = () => {
     e.preventDefault();
     const cleanUsername = newUser.username.trim();
     if (!cleanUsername) {
-      alert('กรุณาระบุชื่อผู้ใช้ (User)');
+      showSwalAlert('warning', 'กรุณาระบุชื่อผู้ใช้ (User)');
       return;
     }
     const isDuplicate = users.some(
       u => (u.username || u.email?.split('@')[0] || '').toLowerCase() === cleanUsername.toLowerCase()
     );
     if (isDuplicate) {
-      alert(`ชื่อผู้ใช้ "${cleanUsername}" มีอยู่ในระบบแล้ว กรุณาใช้ชื่อผู้ใช้อื่น`);
+      showSwalAlert('warning', 'ชื่อผู้ใช้ซ้ำในระบบ', `ชื่อผู้ใช้ "${cleanUsername}" มีอยู่ในระบบแล้ว กรุณาใช้ชื่อผู้ใช้อื่น`);
       return;
     }
     const derivedEmail = cleanUsername.includes('@') ? cleanUsername : `${cleanUsername}@hospital.go.th`;
@@ -229,14 +230,14 @@ export const SettingsView: React.FC = () => {
     if (!editUserData) return;
     const cleanUsername = (editUserData.username || editUserData.email?.split('@')[0] || '').trim();
     if (!cleanUsername) {
-      alert('กรุณาระบุชื่อผู้ใช้ (User)');
+      showSwalAlert('warning', 'กรุณาระบุชื่อผู้ใช้ (User)');
       return;
     }
     const isDuplicate = users.some(
       u => u.id !== editUserData.id && (u.username || u.email?.split('@')[0] || '').toLowerCase() === cleanUsername.toLowerCase()
     );
     if (isDuplicate) {
-      alert(`ชื่อผู้ใช้ "${cleanUsername}" มีอยู่ในระบบแล้ว กรุณาใช้ชื่อผู้ใช้อื่น`);
+      showSwalAlert('warning', 'ชื่อผู้ใช้ซ้ำในระบบ', `ชื่อผู้ใช้ "${cleanUsername}" มีอยู่ในระบบแล้ว กรุณาใช้ชื่อผู้ใช้อื่น`);
       return;
     }
     const derivedEmail = cleanUsername.includes('@') ? cleanUsername : `${cleanUsername}@hospital.go.th`;
@@ -253,11 +254,11 @@ export const SettingsView: React.FC = () => {
     e.preventDefault();
     if (!editPasswordOnlyUser) return;
     if (!newPasswordInput || newPasswordInput.length < 4) {
-      alert('กรุณาระบุรหัสผ่านอย่างน้อย 4 ตัวอักษร');
+      showSwalAlert('warning', 'รหัสผ่านสั้นเกินไป', 'กรุณาระบุรหัสผ่านอย่างน้อย 4 ตัวอักษร');
       return;
     }
     updateUser(editPasswordOnlyUser.id, { password: newPasswordInput });
-    alert(`เปลี่ยนรหัสผ่านสำหรับ ${editPasswordOnlyUser.name} สำเร็จ`);
+    showSwalAlert('success', 'เปลี่ยนรหัสผ่านสำเร็จ', `เปลี่ยนรหัสผ่านสำหรับ ${editPasswordOnlyUser.name} สำเร็จ`);
     setEditPasswordOnlyUser(null);
     setNewPasswordInput('');
   };
@@ -607,7 +608,7 @@ export const SettingsView: React.FC = () => {
                   type="button"
                   onClick={() => {
                     navigator.clipboard.writeText(formSettings.lineOaWebhookUrl || 'https://ais-dev-ngnwk27rcrrjxtrwkcr3lu-843482220752.asia-east1.run.app/api/line/webhook');
-                    alert('คัดลอก Webhook URL เรียบร้อย นำไปวางใน LINE Developers Console');
+                    showSwalToast('success', 'คัดลอก Webhook URL เรียบร้อย', 'นำไปวางใน LINE Developers Console ได้ทันที');
                   }}
                   className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl whitespace-nowrap"
                 >
@@ -682,7 +683,7 @@ export const SettingsView: React.FC = () => {
   });
   return ContentService.createTextOutput(res.getContentText()).setMimeType(ContentService.MimeType.JSON);
 }`);
-                      alert('คัดลอกโค้ด Google Apps Script เรียบร้อย!');
+                      showSwalToast('success', 'คัดลอกโค้ด Google Apps Script เรียบร้อย!');
                     }}
                     className="absolute top-2 right-2 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold rounded-lg cursor-pointer"
                   >
@@ -865,8 +866,8 @@ export const SettingsView: React.FC = () => {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    if (window.confirm(`ยืนยันการลบหน่วยงาน "${d.name}" ใช่หรือไม่?`)) {
+                                  onClick={async () => {
+                                    if (await confirmSwal('ยืนยันการลบหน่วยงาน', `ยืนยันการลบหน่วยงาน "${d.name}" ใช่หรือไม่?`, 'ลบหน่วยงาน', 'ยกเลิก', 'warning')) {
                                       deleteDepartment(d.id);
                                     }
                                   }}
@@ -954,12 +955,12 @@ export const SettingsView: React.FC = () => {
                               <KeyRound className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 if (users.length <= 1) {
-                                  alert('ไม่สามารถลบผู้ใช้งานคนสุดท้ายได้');
+                                  showSwalAlert('warning', 'ไม่สามารถลบได้', 'ไม่สามารถลบผู้ใช้งานคนสุดท้ายได้');
                                   return;
                                 }
-                                if (window.confirm(`ยืนยันการลบผู้ใช้ ${u.name}?`)) {
+                                if (await confirmSwal('ยืนยันการลบผู้ใช้งาน', `ยืนยันการลบผู้ใช้ ${u.name}?`, 'ลบผู้ใช้', 'ยกเลิก', 'warning')) {
                                   deleteUser(u.id);
                                 }
                               }}
@@ -1083,16 +1084,16 @@ export const SettingsView: React.FC = () => {
                                 <Edit className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => {
+                                onClick={async () => {
                                   if (roles.length <= 1) {
-                                    alert('ไม่สามารถลบบทบาทสุดท้ายในระบบได้');
+                                    showSwalAlert('warning', 'ไม่สามารถลบได้', 'ไม่สามารถลบบทบาทสุดท้ายในระบบได้');
                                     return;
                                   }
                                   const confirmMsg = assignedUsers.length > 0
                                     ? `บทบาท "${roleName}" มีผู้ใช้งานอยู่ ${assignedUsers.length} คน หากลบ ระบบจะโอนผู้ใช้ไปยังบทบาทเริ่มต้น ท่านยืนยันจะลบหรือไม่?`
                                     : `ยืนยันการลบบทบาท "${roleName}" หรือไม่?`;
                                   
-                                  if (window.confirm(confirmMsg)) {
+                                  if (await confirmSwal('ยืนยันการลบบทบาทสิทธิ์', confirmMsg, 'ลบบทบาท', 'ยกเลิก', 'warning')) {
                                     deleteRole(roleName);
                                   }
                                 }}
@@ -1253,12 +1254,12 @@ export const SettingsView: React.FC = () => {
                                     <Edit className="w-4 h-4" />
                                   </button>
                                   <button
-                                    onClick={() => {
+                                    onClick={async () => {
                                       if (assetCategories.length <= 1) {
-                                        alert('ไม่สามารถลบประเภทครุภัณฑ์ทั้งหมดได้');
+                                        showSwalAlert('warning', 'ไม่สามารถลบได้', 'ไม่สามารถลบประเภทครุภัณฑ์ทั้งหมดได้');
                                         return;
                                       }
-                                      if (window.confirm(`ยืนยันการลบประเภท "${cat.name}"?`)) {
+                                      if (await confirmSwal('ยืนยันการลบประเภทครุภัณฑ์', `ยืนยันการลบประเภท "${cat.name}"?`, 'ลบประเภท', 'ยกเลิก', 'warning')) {
                                         deleteAssetCategory(cat.id);
                                       }
                                     }}
@@ -1325,12 +1326,12 @@ export const SettingsView: React.FC = () => {
                             <Edit className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (budgetSources.length <= 1) {
-                                alert('ไม่สามารถลบแหล่งงบประมาณทั้งหมดได้');
+                                showSwalAlert('warning', 'ไม่สามารถลบได้', 'ไม่สามารถลบแหล่งงบประมาณทั้งหมดได้');
                                 return;
                               }
-                              if (window.confirm(`ยืนยันการลบแหล่งงบประมาณ "${bs}"?`)) {
+                              if (await confirmSwal('ยืนยันการลบแหล่งงบประมาณ', `ยืนยันการลบแหล่งงบประมาณ "${bs}"?`, 'ลบรายการ', 'ยกเลิก', 'warning')) {
                                 deleteBudgetSource(bs);
                               }
                             }}
@@ -1393,12 +1394,12 @@ export const SettingsView: React.FC = () => {
                             <Edit className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (acquisitionMethods.length <= 1) {
-                                alert('ไม่สามารถลบวิธีการได้มาทั้งหมดได้');
+                                showSwalAlert('warning', 'ไม่สามารถลบได้', 'ไม่สามารถลบวิธีการได้มาทั้งหมดได้');
                                 return;
                               }
-                              if (window.confirm(`ยืนยันการลบวิธีการได้มา "${method}"?`)) {
+                              if (await confirmSwal('ยืนยันการลบวิธีการได้มา', `ยืนยันการลบวิธีการได้มา "${method}"?`, 'ลบรายการ', 'ยกเลิก', 'warning')) {
                                 deleteAcquisitionMethod(method);
                               }
                             }}
@@ -1468,12 +1469,12 @@ export const SettingsView: React.FC = () => {
                             <Edit className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (assetStatuses.length <= 1) {
-                                alert('ไม่สามารถลบสถานะครุภัณฑ์ทั้งหมดได้');
+                                showSwalAlert('warning', 'ไม่สามารถลบได้', 'ไม่สามารถลบสถานะครุภัณฑ์ทั้งหมดได้');
                                 return;
                               }
-                              if (window.confirm(`ยืนยันการลบสถานะ "${status}"?`)) {
+                              if (await confirmSwal('ยืนยันการลบสถานะครุภัณฑ์', `ยืนยันการลบสถานะ "${status}"?`, 'ลบรายการ', 'ยกเลิก', 'warning')) {
                                 deleteAssetStatus(status);
                               }
                             }}
@@ -1539,12 +1540,12 @@ export const SettingsView: React.FC = () => {
                             <Edit className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (assetLocations.length <= 1) {
-                                alert('ไม่สามารถลบสถานที่ทั้งหมดได้');
+                                showSwalAlert('warning', 'ไม่สามารถลบได้', 'ไม่สามารถลบสถานที่ทั้งหมดได้');
                                 return;
                               }
-                              if (window.confirm(`ยืนยันการลบสถานที่ "${loc}"?`)) {
+                              if (await confirmSwal('ยืนยันการลบสถานที่', `ยืนยันการลบสถานที่ "${loc}"?`, 'ลบรายการ', 'ยกเลิก', 'warning')) {
                                 deleteAssetLocation(loc);
                               }
                             }}
@@ -1708,7 +1709,8 @@ export const SettingsView: React.FC = () => {
                 type="button"
                 disabled={isPushingSupabase}
                 onClick={async () => {
-                  if (!window.confirm('คุณต้องการส่งข้อมูลปัจจุบันทั้งหมดขึ้นไปบันทึกบน Supabase ใช่หรือไม่?')) return;
+                  const confirmed = await confirmSwal('ส่งข้อมูลขึ้น Supabase', 'คุณต้องการส่งข้อมูลปัจจุบันทั้งหมดขึ้นไปบันทึกบน Supabase ใช่หรือไม่?', 'ส่งข้อมูลเลย', 'ยกเลิก', 'question');
+                  if (!confirmed) return;
                   setIsPushingSupabase(true);
                   setSupabaseSyncMessage(null);
                   try {
@@ -1769,7 +1771,14 @@ export const SettingsView: React.FC = () => {
                     type="button"
                     disabled={isClearingOperational}
                     onClick={async () => {
-                      if (!window.confirm('คุณต้องการล้างรายการทะเบียนครุภัณฑ์ คลังวัสดุ ยืม-คืน งานซ่อมบำรุง ตรวจนับ และแผนงบประมาณทั้งหมด (ทั้งในเครื่องและ Supabase) ใช่หรือไม่?')) {
+                      const confirmed = await confirmSwal(
+                        'ล้างข้อมูลปฏิบัติการทั้งหมด',
+                        'คุณต้องการล้างรายการทะเบียนครุภัณฑ์ คลังวัสดุ ยืม-คืน งานซ่อมบำรุง ตรวจนับ และแผนงบประมาณทั้งหมด (ทั้งในเครื่องและ Supabase) ใช่หรือไม่?',
+                        'ล้างข้อมูลทั้งหมด',
+                        'ยกเลิก',
+                        'warning'
+                      );
+                      if (!confirmed) {
                         return;
                       }
                       setIsClearingOperational(true);
@@ -2239,11 +2248,11 @@ export const SettingsView: React.FC = () => {
                 e.preventDefault();
                 const trimmed = newRoleInput.trim();
                 if (!trimmed) {
-                  alert('กรุณาระบุชื่อบทบาทสิทธิ์');
+                  showSwalAlert('warning', 'กรุณาระบุชื่อบทบาทสิทธิ์');
                   return;
                 }
                 if (roles.includes(trimmed)) {
-                  alert('มีชื่อบทบาทสิทธิ์นี้อยู่ในระบบแล้ว');
+                  showSwalAlert('warning', 'บทบาทสิทธิ์ซ้ำ', 'มีชื่อบทบาทสิทธิ์นี้อยู่ในระบบแล้ว');
                   return;
                 }
                 addRole(trimmed);
@@ -2316,11 +2325,11 @@ export const SettingsView: React.FC = () => {
                 e.preventDefault();
                 const trimmed = editingRoleNewName.trim();
                 if (!trimmed) {
-                  alert('กรุณาระบุชื่อบทบาทสิทธิ์ใหม่');
+                  showSwalAlert('warning', 'กรุณาระบุชื่อบทบาทสิทธิ์ใหม่');
                   return;
                 }
                 if (trimmed !== editingRoleOldName && roles.includes(trimmed)) {
-                  alert('มีชื่อบทบาทนี้ในระบบแล้ว');
+                  showSwalAlert('warning', 'บทบาทสิทธิ์ซ้ำ', 'มีชื่อบทบาทนี้ในระบบแล้ว');
                   return;
                 }
                 updateRole(editingRoleOldName, trimmed);
@@ -2380,7 +2389,7 @@ export const SettingsView: React.FC = () => {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!newCatData.name || !newCatData.code) {
-                  alert('กรุณากรอกรหัสและชื่อประเภทครุภัณฑ์');
+                  showSwalAlert('warning', 'ข้อมูลไม่ครบถ้วน', 'กรุณากรอกรหัสและชื่อประเภทครุภัณฑ์');
                   return;
                 }
                 addAssetCategory(newCatData);
@@ -2484,7 +2493,7 @@ export const SettingsView: React.FC = () => {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!editingCategory.name || !editingCategory.code) {
-                  alert('กรุณากรอกรหัสและชื่อประเภทครุภัณฑ์');
+                  showSwalAlert('warning', 'ข้อมูลไม่ครบถ้วน', 'กรุณากรอกรหัสและชื่อประเภทครุภัณฑ์');
                   return;
                 }
                 updateAssetCategory(editingCategory.id, editingCategory);
@@ -2590,7 +2599,7 @@ export const SettingsView: React.FC = () => {
                 e.preventDefault();
                 const trimmed = editingOption.newVal.trim();
                 if (!trimmed) {
-                  alert('กรุณาระบุข้อความ');
+                  showSwalAlert('warning', 'กรุณาระบุข้อความ');
                   return;
                 }
                 if (editingOption.type === 'budget') {

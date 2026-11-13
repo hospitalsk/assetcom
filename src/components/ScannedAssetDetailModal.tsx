@@ -21,6 +21,7 @@ import {
   PlusCircle
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { showSwalAlert } from '../utils/swal';
 
 interface ScannedAssetDetailModalProps {
   asset: Asset;
@@ -86,11 +87,15 @@ export const ScannedAssetDetailModal: React.FC<ScannedAssetDetailModalProps> = (
   const handleQuickSubmitRepair = (e: React.FormEvent) => {
     e.preventDefault();
     if (activeRepair) {
-      alert(`⚠️ ป้องกันการส่งซ่อมซ้ำ!\nครุภัณฑ์ชิ้นนี้มีใบแจ้งซ่อมเลขที่ [${activeRepair.repairNo}] ที่กำลังดำเนินการอยู่แล้ว (สถานะ: ${activeRepair.status})`);
+      showSwalAlert(
+        'warning',
+        'ป้องกันการส่งซ่อมซ้ำ!',
+        `ครุภัณฑ์ชิ้นนี้มีใบแจ้งซ่อมเลขที่ [${activeRepair.repairNo}] ที่กำลังดำเนินการอยู่แล้ว (สถานะ: ${activeRepair.status})`
+      );
       return;
     }
     if (!issueDescription.trim()) {
-      alert('กรุณากรอกอาการเสีย / รายละเอียดปัญหาที่พบ');
+      showSwalAlert('warning', 'ข้อมูลไม่ครบถ้วน', 'กรุณากรอกอาการเสีย / รายละเอียดปัญหาที่พบ');
       return;
     }
 

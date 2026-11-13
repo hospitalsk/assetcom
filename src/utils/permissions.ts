@@ -10,6 +10,53 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   'General User': ['dashboard', 'qrcode', 'borrow', 'repair']
 };
 
+export interface UserRoleFlags {
+  isSuperAdmin: boolean;
+  isAdmin: boolean;
+  isDepartmentHead: boolean;
+  isGeneralMechanic: boolean;
+  isSupplyOfficer: boolean;
+  isApprover: boolean;
+  isIT: boolean;
+}
+
+export const getUserRoleFlags = (
+  user?: { role?: string; username?: string; email?: string } | null
+): UserRoleFlags => {
+  const roleClean = (user?.role || '').toLowerCase().trim();
+  const usernameClean = (user?.username || '').toLowerCase().trim();
+  const emailClean = (user?.email || '').toLowerCase().trim();
+
+  const isSuperAdmin = roleClean === 'super admin' || roleClean.includes('super admin');
+  const isAdmin =
+    isSuperAdmin ||
+    roleClean === 'admin' ||
+    roleClean.includes('admin') ||
+    usernameClean === 'admin' ||
+    emailClean.startsWith('admin@');
+
+  const isDepartmentHead = roleClean === 'department head' || roleClean.includes('head');
+  const isGeneralMechanic =
+    roleClean === 'general mechanic' ||
+    roleClean === 'general_mechanic' ||
+    roleClean.includes('mechanic') ||
+    roleClean === 'ช่างทั่วไป' ||
+    roleClean === 'ช่าง';
+  const isSupplyOfficer = roleClean === 'supply officer' || roleClean.includes('supply');
+  const isApprover = roleClean === 'approver' || roleClean.includes('approver');
+  const isIT = roleClean === 'it officer' || roleClean.includes('it officer');
+
+  return {
+    isSuperAdmin,
+    isAdmin,
+    isDepartmentHead,
+    isGeneralMechanic,
+    isSupplyOfficer,
+    isApprover,
+    isIT
+  };
+};
+
 export const getRoleAllowedTabs = (role: string): string[] => {
   if (!role) return ['dashboard', 'repair'];
   const r = role.toLowerCase().trim();

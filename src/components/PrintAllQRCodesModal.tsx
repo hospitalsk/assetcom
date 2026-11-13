@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Asset, Department } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { Printer, X, CheckSquare, Square, Filter, LayoutGrid, RefreshCw } from 'lucide-react';
+import { showSwalAlert } from '../utils/swal';
 
 interface PrintAllQRCodesModalProps {
   assets: Asset[];
@@ -71,7 +72,7 @@ export const PrintAllQRCodesModal: React.FC<PrintAllQRCodesModalProps> = ({
 
   const handlePrint = () => {
     if (printableAssets.length === 0) {
-      alert('กรุณาเลือกอย่างน้อย 1 รายการเพื่อพิมพ์สติกเกอร์');
+      showSwalAlert('warning', 'ยังไม่ได้เลือกรายการ', 'กรุณาเลือกอย่างน้อย 1 รายการเพื่อพิมพ์สติกเกอร์');
       return;
     }
     window.print();

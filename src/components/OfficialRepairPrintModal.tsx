@@ -1,8 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { RepairRequest } from '../types';
-import { Printer, X, Download, Lock, CheckCircle, ShieldCheck, UserCheck } from 'lucide-react';
+import { Printer, X, Download, CheckCircle, ShieldCheck, Save } from 'lucide-react';
 import { exportA4ElementToPdf } from '../utils/pdfExport';
+import { getUserRoleFlags } from '../utils/permissions';
+import { showSwalAlert, showSwalToast } from '../utils/swal';
 
 interface OfficialRepairPrintModalProps {
   repairRequest: RepairRequest;
@@ -16,14 +18,30 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
   const { assets, departments, users, currentUser, updateRepairRequest, settings } = useApp();
   const printRef = useRef<HTMLDivElement>(null);
 
+  const roleFlags = getUserRoleFlags(currentUser);
+  const isReporter = currentUser.id === repairRequest.reporterId;
+
+  // Fine-grained edit permissions per hospital official memo policy
+  const canEditReporterFields = isReporter || roleFlags.isAdmin;
+  const canEditHeadFields = roleFlags.isDepartmentHead || roleFlags.isAdmin;
+  const canEditMaintFields = roleFlags.isGeneralMechanic || roleFlags.isAdmin;
+  const canEditSupplyFields = roleFlags.isSupplyOfficer || roleFlags.isAdmin;
+  const canEditOtherFields = roleFlags.isAdmin;
+
   const asset = assets.find(a => a.id === repairRequest.assetId);
   const dept = departments.find(d => d.id === repairRequest.departmentId);
   const reporter = users.find(u => u.id === repairRequest.reporterId) || {
-    name: 'นายสมชาย ใจดี',
-    position: 'นักวิชาการคอมพิวเตอร์'
+    name: currentUser.name,
+    position: currentUser.position || 'เจ้าหน้าที่'
   };
   const technician = users.find(u => u.id === repairRequest.technicianId);
-  const headUser = users.find(u => u.role === 'Department Head' || u.departmentId === repairRequest.departmentId);
+  const headUser =
+    users.find(u => getUserRoleFlags(u).isDepartmentHead && u.departmentId === repairRequest.departmentId) ||
+    users.find(u => getUserRoleFlags(u).isDepartmentHead);
+  const supplyUser = users.find(u => getUserRoleFlags(u).isSupplyOfficer);
+  const approverUser = users.find(u => getUserRoleFlags(u).isApprover);
+
+  const savedMemo = repairRequest.memoData || {};
 
   // Date formatting helpers (Date when the repair request was reported)
   const reportDateRaw = repairRequest.sentDate || repairRequest.createdAt;
@@ -36,30 +54,35 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
     ? `${reqDate.getDate()} ${thaiMonths[reqDate.getMonth()]} ${reqDate.getFullYear() + 543}`
     : (repairRequest.sentDate || repairRequest.createdAt || '');
 
-  // Interactive Form State for ALL input fields in the official document
-  const [govAgency, setGovAgency] = useState('โรงพยาบาลสังขละบุรี ฝ่ายบริหารทั่วไป โทร. ๐๓๔-๕๙๕๐๓๐ ต่อ ๒๐๕');
-  const [docNoSub, setDocNoSub] = useState(repairRequest.repairNo ? repairRequest.repairNo.replace('REP-', '') : '2568/01');
-  const [docDate, setDocDate] = useState(thaiDateStr);
+  const defaultAgency = `${settings.organizationName || 'โรงพยาบาลสังขละบุรี'} ฝ่ายบริหารทั่วไป ${settings.orgPhone ? `โทร. ${settings.orgPhone}` : 'โทร. ๐๓๔-๕๙๕๐๓๐ ต่อ ๒๐๕'}`;
 
-  React.useEffect(() => {
-    setDocDate(thaiDateStr);
-  }, [repairRequest.id, repairRequest.sentDate, repairRequest.createdAt]);
-  const [deptName, setDeptName] = useState(dept?.name || 'กลุ่มงานทั่วไป');
-  const [category, setCategory] = useState<'การแพทย์' | 'สำนักงาน' | 'ยานพาหนะ' | 'อาคาร' | 'สิ่งก่อสร้าง' | 'งานบ้านงานครัว' | 'อุปกรณ์และอื่นๆ'>('สำนักงาน');
+  // Interactive Form State for ALL input fields in the official document
+  const [govAgency, setGovAgency] = useState(savedMemo.agency || defaultAgency);
+  const [docNoSub, setDocNoSub] = useState(savedMemo.docNumber || (repairRequest.repairNo ? repairRequest.repairNo.replace('REP-', '') : '2568/01'));
+  const [docDate, setDocDate] = useState(savedMemo.docDate || thaiDateStr);
+
+  useEffect(() => {
+    setDocDate(repairRequest.memoData?.docDate || thaiDateStr);
+  }, [repairRequest.id, repairRequest.sentDate, repairRequest.createdAt, thaiDateStr]);
+
+  const [deptName, setDeptName] = useState(savedMemo.deptName || dept?.name || 'กลุ่มงานทั่วไป');
+  const [category, setCategory] = useState<'การแพทย์' | 'สำนักงาน' | 'ยานพาหนะ' | 'อาคาร' | 'สิ่งก่อสร้าง' | 'งานบ้านงานครัว' | 'อุปกรณ์และอื่นๆ'>(
+    savedMemo.category || 'สำนักงาน'
+  );
 
   // Asset details
-  const [assetName, setAssetName] = useState(asset?.name || '');
-  const [assetModel, setAssetModel] = useState(asset?.model || '');
+  const [assetName, setAssetName] = useState(savedMemo.machineName || asset?.name || '');
+  const [assetModel, setAssetModel] = useState(savedMemo.machineModel || asset?.model || '');
   const [issueDesc, setIssueDesc] = useState(repairRequest.issueDescription || '');
-  const [assetCode, setAssetCode] = useState(asset?.assetCode || asset?.serialNumber || '');
-  const [company, setCompany] = useState(asset?.vendorName || '');
-  const [phone, setPhone] = useState(asset?.vendorPhone || '');
-  const [quantity, setQuantity] = useState('1 เครื่อง');
+  const [assetCode, setAssetCode] = useState(savedMemo.assetNumber || asset?.assetCode || asset?.serialNumber || '');
+  const [company, setCompany] = useState(savedMemo.vendorCompany || asset?.vendorName || '');
+  const [phone, setPhone] = useState(savedMemo.vendorPhone || asset?.vendorPhone || '');
+  const [quantity, setQuantity] = useState(savedMemo.quantity || '1 เครื่อง');
 
   // Signatures Part 1: Reporter
-  const [reporterSign, setReporterSign] = useState(reporter.name);
-  const [reporterFullName, setReporterFullName] = useState(reporter.name);
-  const [reporterPosition, setReporterPosition] = useState(reporter.position || 'เจ้าหน้าที่');
+  const [reporterSign, setReporterSign] = useState(savedMemo.senderSign || reporter.name);
+  const [reporterFullName, setReporterFullName] = useState(savedMemo.senderName || reporter.name);
+  const [reporterPosition, setReporterPosition] = useState(savedMemo.senderPosition || reporter.position || 'เจ้าหน้าที่');
 
   // Real Workflow Step Approval Flags
   const isHeadApproved = repairRequest.departmentHeadApproved === true || 
@@ -75,59 +98,181 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
     repairRequest.status === 'ซ่อมเสร็จ' || repairRequest.status === 'รอหน่วยงานรับของ' || repairRequest.status === 'รับของเรียบร้อย' || repairRequest.status === 'ดำเนินการเสร็จ' || repairRequest.status === 'ปิดงาน';
 
   const isItemReceived = repairRequest.itemReceived === true || repairRequest.status === 'รับของเรียบร้อย';
-  const [headOpinion, setHeadOpinion] = useState('เห็นควรอนุมัติให้ดำเนินการซ่อมบำรุงตามเสนอ');
-  const [headSign, setHeadSign] = useState(headUser?.name || 'ดร. สมชาย ใจดี');
-  const [headFullName, setHeadFullName] = useState(headUser?.name || 'ดร. สมชาย ใจดี');
-  const [headPosition, setHeadPosition] = useState(headUser?.position || 'หัวหน้าฝ่าย');
 
-  // Maintenance Dept Options
-  const [chkSelfFree, setChkSelfFree] = useState(false);
-  const [chkSelfCost, setChkSelfCost] = useState(true);
-  const [chkGovTech, setChkGovTech] = useState(false);
-  const [repairDays, setRepairDays] = useState('3');
-  const [repairCost, setRepairCost] = useState(repairRequest.totalCost ? String(repairRequest.totalCost) : '850');
-  const [chkOutside, setChkOutside] = useState(false);
-  const [outsideCompany, setOutsideCompany] = useState('');
-  const [chkOther, setChkOther] = useState(false);
-  const [otherDetails, setOtherDetails] = useState('');
+  // Department Head fields (dynamically resolves logged-in Department Head when unapproved or approved)
+  const resolvedHeadName =
+    repairRequest.departmentHeadApprovedBy ||
+    savedMemo.headSign ||
+    (roleFlags.isDepartmentHead ? currentUser.name : headUser?.name || '');
+  const resolvedHeadPosition =
+    repairRequest.headPosition ||
+    savedMemo.headPosition ||
+    (roleFlags.isDepartmentHead ? (currentUser.position || 'หัวหน้าฝ่าย/หัวหน้ากลุ่มงาน') : (headUser?.position || 'หัวหน้าฝ่าย/หัวหน้ากลุ่มงาน'));
+
+  const [headOpinion, setHeadOpinion] = useState(
+    repairRequest.headOpinion || savedMemo.headOpinion || 'เห็นควรอนุมัติให้ดำเนินการซ่อมบำรุงตามเสนอ'
+  );
+  const [headSign, setHeadSign] = useState(resolvedHeadName);
+  const [headFullName, setHeadFullName] = useState(resolvedHeadName);
+  const [headPosition, setHeadPosition] = useState(resolvedHeadPosition);
+
+  // Maintenance Dept Options (Editable ONLY by General Mechanic, Admin, Super Admin)
+  const [chkSelfFree, setChkSelfFree] = useState(Boolean(savedMemo.canSelfRepairFree));
+  const [chkSelfCost, setChkSelfCost] = useState(
+    savedMemo.canSelfRepairWithCost !== undefined ? Boolean(savedMemo.canSelfRepairWithCost) : false
+  );
+  const [chkGovTech, setChkGovTech] = useState(Boolean(savedMemo.sendToGovTech));
+  const [repairDays, setRepairDays] = useState(savedMemo.repairDays || '');
+  const [repairCost, setRepairCost] = useState(
+    savedMemo.repairCost || (repairRequest.totalCost ? String(repairRequest.totalCost) : '')
+  );
+  const [chkOutside, setChkOutside] = useState(Boolean(savedMemo.sendToOutsideCompany));
+  const [outsideCompany, setOutsideCompany] = useState(savedMemo.outsideCompanyName || '');
+  const [chkOther, setChkOther] = useState(Boolean(savedMemo.otherOption));
+  const [otherDetails, setOtherDetails] = useState(savedMemo.otherOptionDetails || '');
 
   // Maintenance Signatures
-  const [maintSign, setMaintSign] = useState(technician?.name || reporter.name);
-  const [maintFullName, setMaintFullName] = useState(technician?.name || reporter.name);
+  const resolvedMaintName =
+    repairRequest.maintCompletedBy ||
+    repairRequest.technicianApprovedBy ||
+    savedMemo.maintenanceSign ||
+    technician?.name ||
+    (canEditMaintFields ? currentUser.name : '');
+  const [maintSign, setMaintSign] = useState(resolvedMaintName);
+  const [maintFullName, setMaintFullName] = useState(savedMemo.maintenanceName || resolvedMaintName);
 
-  // Approval & Procurement Signatures
-  const [procureSign, setProcureSign] = useState('ชุติญา จรัสกุลธาดา');
+  // Supply Officer Signatures (dynamically resolves Supply Officer user)
+  const resolvedSupplyName =
+    repairRequest.supplyOfficerApprovedBy ||
+    savedMemo.procureSign ||
+    (roleFlags.isSupplyOfficer ? currentUser.name : supplyUser?.name || '');
+  const [procureSign, setProcureSign] = useState(resolvedSupplyName);
 
-  // Delivery & Receive Signatures
-  const [deliverSign, setDeliverSign] = useState(technician?.name || reporter.name);
-  const [deliverFullName, setDeliverFullName] = useState(technician?.name || reporter.name);
-  const [deliverDay, setDeliverDay] = useState(String(reqDate.getDate()));
-  const [deliverMonth, setDeliverMonth] = useState(thaiMonths[reqDate.getMonth()]);
-  const [deliverYear, setDeliverYear] = useState(String(reqDate.getFullYear() + 543));
+  // Delivery & Receive Signatures (Admin manual override / workflow stamps)
+  const validReqDate = !isNaN(reqDate.getTime()) ? reqDate : new Date();
+  const [deliverSign, setDeliverSign] = useState(
+    savedMemo.deliverySign || repairRequest.maintCompletedBy || technician?.name || ''
+  );
+  const [deliverFullName, setDeliverFullName] = useState(
+    savedMemo.deliveryName || repairRequest.maintCompletedBy || technician?.name || ''
+  );
+  const [deliverDay, setDeliverDay] = useState(savedMemo.deliveryDay || String(validReqDate.getDate()));
+  const [deliverMonth, setDeliverMonth] = useState(savedMemo.deliveryMonth || thaiMonths[validReqDate.getMonth()]);
+  const [deliverYear, setDeliverYear] = useState(savedMemo.deliveryYear || String(validReqDate.getFullYear() + 543));
 
   // Approver Comments & Signatures
-  const [approverComments1, setApproverComments1] = useState('อนุมัติให้ดำเนินการซ่อมบำรุงได้');
-  const [approverComments2, setApproverComments2] = useState('');
-  const [approverSign, setApproverSign] = useState('จิรวัฒน์ วงษ์สวัสดิ์');
+  const resolvedApproverName =
+    repairRequest.directorApprovedBy ||
+    savedMemo.approverSign ||
+    approverUser?.name ||
+    settings.approverName ||
+    '';
+  const [approverComments1, setApproverComments1] = useState(
+    repairRequest.approverComments || savedMemo.approverComment1 || 'อนุมัติให้ดำเนินการซ่อมบำรุงได้'
+  );
+  const [approverComments2, setApproverComments2] = useState(savedMemo.approverComment2 || '');
+  const [approverSign, setApproverSign] = useState(resolvedApproverName);
 
   // Receiver
-  const [receiveSign, setReceiveSign] = useState(reporter.name);
-  const [receiveFullName, setReceiveFullName] = useState(reporter.name);
-  const [receivePosition, setReceivePosition] = useState(reporter.position || 'เจ้าหน้าที่ผู้รับของ');
+  const [receiveSign, setReceiveSign] = useState(savedMemo.receiveSign || repairRequest.itemReceivedBy || reporter.name);
+  const [receiveFullName, setReceiveFullName] = useState(savedMemo.receiveName || repairRequest.itemReceivedBy || reporter.name);
+  const [receivePosition, setReceivePosition] = useState(savedMemo.receivePosition || reporter.position || 'เจ้าหน้าที่ผู้รับของ');
 
   const [isSavingPdf, setIsSavingPdf] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [printNotice, setPrintNotice] = useState<string | null>(null);
+
+  const buildAuthorizedMemoUpdates = (): Partial<RepairRequest> => {
+    const nextMemo: Record<string, any> = { ...(repairRequest.memoData || {}) };
+    const reqUpdates: Partial<RepairRequest> = {};
+
+    if (canEditReporterFields) {
+      nextMemo.agency = govAgency;
+      nextMemo.docNumber = docNoSub;
+      nextMemo.docDate = docDate;
+      nextMemo.deptName = deptName;
+      nextMemo.category = category;
+      nextMemo.machineName = assetName;
+      nextMemo.machineModel = assetModel;
+      nextMemo.assetNumber = assetCode;
+      nextMemo.vendorCompany = company;
+      nextMemo.vendorPhone = phone;
+      nextMemo.quantity = quantity;
+      nextMemo.senderSign = reporterSign;
+      nextMemo.senderName = reporterFullName;
+      nextMemo.senderPosition = reporterPosition;
+      reqUpdates.issueDescription = issueDesc;
+    }
+
+    if (canEditHeadFields) {
+      nextMemo.headOpinion = headOpinion;
+      nextMemo.headSign = headSign;
+      nextMemo.headName = headFullName;
+      nextMemo.headPosition = headPosition;
+      reqUpdates.headOpinion = headOpinion;
+      reqUpdates.headPosition = headPosition;
+    }
+
+    if (canEditMaintFields) {
+      nextMemo.canSelfRepairFree = chkSelfFree;
+      nextMemo.canSelfRepairWithCost = chkSelfCost;
+      nextMemo.sendToGovTech = chkGovTech;
+      nextMemo.repairDays = repairDays;
+      nextMemo.repairCost = repairCost;
+      nextMemo.sendToOutsideCompany = chkOutside;
+      nextMemo.outsideCompanyName = outsideCompany;
+      nextMemo.otherOption = chkOther;
+      nextMemo.otherOptionDetails = otherDetails;
+      nextMemo.maintenanceSign = maintSign;
+      nextMemo.maintenanceName = maintFullName;
+      const numericCost = parseFloat(repairCost);
+      if (!isNaN(numericCost)) {
+        reqUpdates.partsCost = numericCost;
+      }
+    }
+
+    if (canEditSupplyFields) {
+      nextMemo.procureSign = procureSign;
+      nextMemo.procureName = procureSign;
+    }
+
+    if (canEditOtherFields) {
+      nextMemo.deliverySign = deliverSign;
+      nextMemo.deliveryName = deliverFullName;
+      nextMemo.deliveryDay = deliverDay;
+      nextMemo.deliveryMonth = deliverMonth;
+      nextMemo.deliveryYear = deliverYear;
+      nextMemo.approverComment1 = approverComments1;
+      nextMemo.approverComment2 = approverComments2;
+      nextMemo.approverSign = approverSign;
+      nextMemo.receiveSign = receiveSign;
+      nextMemo.receiveName = receiveFullName;
+      nextMemo.receivePosition = receivePosition;
+      reqUpdates.approverComments = approverComments1;
+    }
+
+    reqUpdates.memoData = nextMemo;
+    return reqUpdates;
+  };
+
+  const handleSaveMemoForm = (showFeedback = true) => {
+    const updates = buildAuthorizedMemoUpdates();
+    updateRepairRequest(repairRequest.id, updates);
+    if (showFeedback) {
+      showSwalToast('success', 'บันทึกข้อมูลแบบฟอร์มเรียบร้อยแล้ว');
+    }
+  };
 
   const handleSavePdf = async () => {
     if (!printRef.current) return;
     try {
       setIsSavingPdf(true);
-      setPrintNotice(null);
+      handleSaveMemoForm(false);
       const filename = `บันทึกข้อความขออนุมัติซ่อมบำรุง_${docNoSub.replace(/[\/\\]/g, '-')}.pdf`;
       await exportA4ElementToPdf(printRef.current, filename);
+      showSwalToast('success', 'บันทึกไฟล์ PDF 1 หน้า A4 สำเร็จ');
     } catch (err) {
       console.error('Save PDF error:', err);
+      showSwalAlert('error', 'ไม่สามารถบันทึก PDF ได้', 'กรุณาลองใหม่อีกครั้ง');
     } finally {
       setIsSavingPdf(false);
     }
@@ -136,7 +281,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
   const handlePrint = async () => {
     if (!printRef.current) return;
     setIsPrinting(true);
-    setPrintNotice(null);
+    handleSaveMemoForm(false);
 
     try {
       const sourceEl = printRef.current;
@@ -371,7 +516,11 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
           window.removeEventListener('beforeprint', onMainBeforePrint);
           if (!mainPrintTriggered) {
             // Fallback 2: sandbox completely blocks native print(); auto-download A4 PDF
-            setPrintNotice('เบราว์เซอร์ในโหมด Preview นี้ปิดกั้นหน้าต่างสั่งพิมพ์โดยตรง ระบบได้บันทึกเป็นไฟล์ PDF 1 หน้า A4 ให้เรียบร้อยแล้ว สามารถเปิดไฟล์ PDF เพื่อสั่งพิมพ์ได้ทันที');
+            showSwalAlert(
+              'info',
+              'บันทึกเป็นไฟล์ PDF 1 หน้า A4 แล้ว',
+              'เบราว์เซอร์ในโหมด Preview นี้ปิดกั้นหน้าต่างสั่งพิมพ์โดยตรง ระบบได้บันทึกเป็นไฟล์ PDF 1 หน้า A4 ให้เรียบร้อยแล้ว สามารถเปิดไฟล์ PDF เพื่อสั่งพิมพ์ได้ทันที'
+            );
             await handleSavePdf();
           }
           setIsPrinting(false);
@@ -402,7 +551,18 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
               </p>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {(canEditReporterFields || canEditHeadFields || canEditMaintFields || canEditSupplyFields || canEditOtherFields) && (
+              <button
+                type="button"
+                onClick={() => handleSaveMemoForm(true)}
+                className="flex items-center space-x-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer active:scale-95"
+                title="บันทึกการแก้ไขแบบฟอร์มลงระบบ"
+              >
+                <Save className="w-4 h-4" />
+                <span>บันทึกข้อมูล</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={handleSavePdf}
@@ -433,30 +593,42 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             </button>
           </div>
         </div>
-        {printNotice && (
-          <div className="w-full px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-400/50 text-amber-100 text-xs">
-            {printNotice}
-          </div>
-        )}
-        {currentUser.role === 'Department Head' || currentUser.role === 'Super Admin' || currentUser.role === 'Approver' ? (
+        {roleFlags.isDepartmentHead || roleFlags.isAdmin ? (
           !isHeadApproved ? (
             <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 bg-gradient-to-r from-blue-900/90 to-indigo-900/90 border border-blue-600/80 px-4 py-2.5 rounded-xl text-xs shadow-lg">
               <div className="flex items-center space-x-2">
                 <span className="p-1.5 bg-blue-600 rounded-lg text-white font-bold">✍️</span>
                 <div>
-                  <div className="font-bold text-white text-xs">อนุมัติในฐานะหัวหน้ากลุ่มงาน ({currentUser.name})</div>
-                  <div className="text-[11px] text-blue-200">กดยืนยันอนุมัติเพื่อบันทึกการลงนามอิเล็กทรอนิกส์ในระบบ</div>
+                  <div className="font-bold text-white text-xs">อนุมัติในฐานะหัวหน้ากลุ่มงาน ({currentUser.name} - {currentUser.position || 'หัวหน้าฝ่าย/กลุ่มงาน'})</div>
+                  <div className="text-[11px] text-blue-200">กดยืนยันอนุมัติเพื่อบันทึกชื่อ-นามสกุลและตำแหน่งของคุณลงแบบฟอร์มราชการ</div>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => {
+                  const signerName = roleFlags.isDepartmentHead ? currentUser.name : (headSign || currentUser.name);
+                  const signerPos = roleFlags.isDepartmentHead ? (currentUser.position || headPosition || 'หัวหน้าฝ่าย/หัวหน้ากลุ่มงาน') : headPosition;
+                  setHeadSign(signerName);
+                  setHeadFullName(signerName);
+                  setHeadPosition(signerPos);
+                  const memoUpdates = buildAuthorizedMemoUpdates();
                   updateRepairRequest(repairRequest.id, {
+                    ...memoUpdates,
                     departmentHeadApproved: true,
-                    departmentHeadApprovedBy: currentUser.name,
+                    departmentHeadApprovedBy: signerName,
                     departmentHeadApprovedAt: new Date().toISOString(),
-                    status: repairRequest.status === 'รอรับเรื่อง' || repairRequest.status === 'รอตรวจสอบ' ? 'รอดำเนินการ' : repairRequest.status
+                    headOpinion,
+                    headPosition: signerPos,
+                    memoData: {
+                      ...(memoUpdates.memoData || {}),
+                      headOpinion,
+                      headSign: signerName,
+                      headName: signerName,
+                      headPosition: signerPos
+                    },
+                    status: (repairRequest.status === 'รอหัวหน้าอนุมัติ' || repairRequest.status === 'รอรับเรื่อง' || repairRequest.status === 'รอตรวจสอบ') ? 'รอพัสดุอนุมัติ' : repairRequest.status
                   });
+                  showSwalAlert('success', 'อนุมัติใบแจ้งซ่อมเรียบร้อยแล้ว', `ลงนามโดย ${signerName} (${signerPos})`);
                 }}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-md flex items-center space-x-1.5 cursor-pointer shrink-0"
               >
@@ -481,14 +653,46 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             <div className="flex items-center space-x-2">
               <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
               <span>
-                สถานะการอนุมัติหัวหน้ากลุ่มงาน: <strong className={isHeadApproved ? 'text-emerald-400' : 'text-amber-400'}>{isHeadApproved ? '✓ อนุมัติแล้ว (แสดงชื่อและลายเซ็นสมบูรณ์)' : '⏳ ยังไม่อนุมัติ (แสดงเส้นสำหรับเซ็นในกระดาษ)'}</strong>
+                สถานะการอนุมัติหัวหน้ากลุ่มงาน: <strong className={isHeadApproved ? 'text-emerald-400' : 'text-amber-400'}>{isHeadApproved ? `✓ อนุมัติแล้ว (${repairRequest.departmentHeadApprovedBy || headSign})` : '⏳ ยังไม่อนุมัติ (แสดงเส้นสำหรับเซ็นในกระดาษ)'}</strong>
               </span>
             </div>
             {!isHeadApproved && (
               <span className="text-[11px] text-amber-300 italic">
-                ต้องได้รับการอนุมัติจากบัญชีหัวหน้ากลุ่มงาน (Department Head) ในระบบ
+                สิทธิ์แก้ไข: ผู้แจ้งซ่อมแก้ไขหัวเรื่อง/รายการ/ผู้ส่งซ่อม • ส่วนอื่นตาม Role หรือ Admin
               </span>
             )}
+          </div>
+        )}
+        {(roleFlags.isSupplyOfficer || roleFlags.isAdmin) && isHeadApproved && !isSupplyApproved && (
+          <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-2 bg-indigo-950/90 border border-indigo-600/80 px-4 py-2 rounded-xl text-xs text-indigo-100">
+            <div>
+              <strong>อนุมัติในฐานะหัวหน้าเจ้าหน้าที่พัสดุ ({currentUser.name})</strong>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const signerName = roleFlags.isSupplyOfficer ? currentUser.name : (procureSign || currentUser.name);
+                setProcureSign(signerName);
+                const memoUpdates = buildAuthorizedMemoUpdates();
+                updateRepairRequest(repairRequest.id, {
+                  ...memoUpdates,
+                  supplyOfficerApproved: true,
+                  supplyOfficerApprovedBy: signerName,
+                  supplyOfficerApprovedAt: new Date().toISOString(),
+                  memoData: {
+                    ...(memoUpdates.memoData || {}),
+                    procureSign: signerName,
+                    procureName: signerName
+                  },
+                  status: 'รอผู้อำนวยการอนุมัติ'
+                });
+                showSwalAlert('success', 'อนุมัติในฐานะหัวหน้าเจ้าหน้าที่พัสดุสำเร็จ', `ลงนามโดย ${signerName}`);
+              }}
+              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold flex items-center space-x-1.5 cursor-pointer shrink-0"
+            >
+              <CheckCircle className="w-4 h-4" />
+              <span>อนุมัติ (หัวหน้าเจ้าหน้าที่พัสดุ)</span>
+            </button>
           </div>
         )}
       </div>
@@ -706,6 +910,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
               <span className="bold" style={{ marginTop: '0px', marginBottom: '4px' }}>ส่วนราชการ</span>&nbsp;
               <input 
                 type="text" 
+                readOnly={!canEditReporterFields}
                 value={govAgency} 
                 onChange={(e) => setGovAgency(e.target.value)} 
                 style={{ width: '82%', lineHeight: '15.6667px', marginLeft: '0px', marginTop: '3px', height: '16.8594px' }} 
@@ -717,6 +922,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                 <span className="bold">ที่</span>&nbsp;กจ ๐๐๓.๓๐๘.๑/
                 <input 
                   type="text" 
+                  readOnly={!canEditReporterFields}
                   className="flex-input" 
                   value={docNoSub} 
                   onChange={(e) => setDocNoSub(e.target.value)} 
@@ -727,6 +933,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                 <span className="bold">วันที่</span>
                 <input 
                   type="text" 
+                  readOnly={!canEditReporterFields}
                   className="flex-input" 
                   value={docDate} 
                   onChange={(e) => setDocDate(e.target.value)} 
@@ -747,30 +954,30 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
           {/* เนื้อหา */}
           <div>
             <div style={{ paddingLeft: '20px', marginTop: '5px' }}>
-              ด้วยฝ่าย/งาน <input type="text" value={deptName} onChange={(e) => setDeptName(e.target.value)} style={{ width: '220px' }} /> มีความประสงค์จะทำการซ่อมบำรุงพัสดุ ครุภัณฑ์
+              ด้วยฝ่าย/งาน <input type="text" readOnly={!canEditReporterFields} value={deptName} onChange={(e) => setDeptName(e.target.value)} style={{ width: '220px' }} /> มีความประสงค์จะทำการซ่อมบำรุงพัสดุ ครุภัณฑ์
             </div>
             
             <div className="row" style={{ flexWrap: 'wrap' }}>
               <label className="checkbox-label">
-                <input type="radio" name="cat" checked={category === 'การแพทย์'} onChange={() => setCategory('การแพทย์')} style={{ marginBottom: '-11px', paddingBottom: '0px' }} /> การแพทย์
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'การแพทย์'} onChange={() => setCategory('การแพทย์')} style={{ marginBottom: '-11px', paddingBottom: '0px' }} /> การแพทย์
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" checked={category === 'สำนักงาน'} onChange={() => setCategory('สำนักงาน')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> สำนักงาน
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'สำนักงาน'} onChange={() => setCategory('สำนักงาน')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> สำนักงาน
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" checked={category === 'ยานพาหนะ'} onChange={() => setCategory('ยานพาหนะ')} style={{ marginBottom: '-11px' }} /> ยานพาหนะ
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'ยานพาหนะ'} onChange={() => setCategory('ยานพาหนะ')} style={{ marginBottom: '-11px' }} /> ยานพาหนะ
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" checked={category === 'อาคาร'} onChange={() => setCategory('อาคาร')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> อาคาร
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'อาคาร'} onChange={() => setCategory('อาคาร')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> อาคาร
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" checked={category === 'สิ่งก่อสร้าง'} onChange={() => setCategory('สิ่งก่อสร้าง')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> สิ่งก่อสร้าง
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'สิ่งก่อสร้าง'} onChange={() => setCategory('สิ่งก่อสร้าง')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> สิ่งก่อสร้าง
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" checked={category === 'งานบ้านงานครัว'} onChange={() => setCategory('งานบ้านงานครัว')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> งานบ้านงานครัว
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'งานบ้านงานครัว'} onChange={() => setCategory('งานบ้านงานครัว')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> งานบ้านงานครัว
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" checked={category === 'อุปกรณ์และอื่นๆ'} onChange={() => setCategory('อุปกรณ์และอื่นๆ')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> อุปกรณ์และอื่นๆ
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'อุปกรณ์และอื่นๆ'} onChange={() => setCategory('อุปกรณ์และอื่นๆ')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> อุปกรณ์และอื่นๆ
               </label>
               ตามตารางดังต่อไปนี้
             </div>
@@ -778,17 +985,17 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             {/* รายการซ่อม */}
             <div style={{ paddingLeft: '20px', marginTop: '5px' }}>
               <div className="row">
-                1.เครื่อง<input type="text" value={assetName} onChange={(e) => setAssetName(e.target.value)} style={{ width: '418px' }} /> 
-                รุ่น<input type="text" className="flex-input" value={assetModel} onChange={(e) => setAssetModel(e.target.value)} />
+                1.เครื่อง<input type="text" readOnly={!canEditReporterFields} value={assetName} onChange={(e) => setAssetName(e.target.value)} style={{ width: '418px' }} /> 
+                รุ่น<input type="text" readOnly={!canEditReporterFields} className="flex-input" value={assetModel} onChange={(e) => setAssetModel(e.target.value)} />
               </div>
               <div className="row">
-                ลักษณะ/อาการชำรุด<input type="text" value={issueDesc} onChange={(e) => setIssueDesc(e.target.value)} style={{ width: '220px' }} /> 
-                หมายเลขครุภัณฑ์<input type="text" className="flex-input" value={assetCode} onChange={(e) => setAssetCode(e.target.value)} />
+                ลักษณะ/อาการชำรุด<input type="text" readOnly={!canEditReporterFields} value={issueDesc} onChange={(e) => setIssueDesc(e.target.value)} style={{ width: '220px' }} /> 
+                หมายเลขครุภัณฑ์<input type="text" readOnly={!canEditReporterFields} className="flex-input" value={assetCode} onChange={(e) => setAssetCode(e.target.value)} />
               </div>
               <div className="row">
-                บริษัท<input type="text" value={company} onChange={(e) => setCompany(e.target.value)} style={{ width: '200px' }} /> 
-                เบอร์โทรศัพท์<input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} style={{ width: '100px' }} /> 
-                จำนวน<input type="text" className="flex-input" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                บริษัท<input type="text" readOnly={!canEditReporterFields} value={company} onChange={(e) => setCompany(e.target.value)} style={{ width: '200px' }} /> 
+                เบอร์โทรศัพท์<input type="text" readOnly={!canEditReporterFields} value={phone} onChange={(e) => setPhone(e.target.value)} style={{ width: '100px' }} /> 
+                จำนวน<input type="text" readOnly={!canEditReporterFields} className="flex-input" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
               </div>
             </div>
                  
@@ -801,34 +1008,39 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
           <div className="grid-2" style={{ marginTop: '10px' }}>
             <div className="signature-box">
               <div className="row" style={{ justifyContent: 'center' }}>
-                ลงชื่อ<input type="text" value={reporterSign} onChange={(e) => setReporterSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />ผู้ส่งซ่อม
+                ลงชื่อ<input type="text" readOnly={!canEditReporterFields} value={reporterSign} onChange={(e) => setReporterSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />ผู้ส่งซ่อม
               </div>
               <div className="row" style={{ justifyContent: 'left' }}>
                 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                <input type="text" value={reporterFullName} onChange={(e) => setReporterFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                <input type="text" readOnly={!canEditReporterFields} value={reporterFullName} onChange={(e) => setReporterFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
               </div>
               <div className="row" style={{ justifyContent: 'center' }}>
-                ตำแหน่ง<input type="text" value={reporterPosition} onChange={(e) => setReporterPosition(e.target.value)} style={{ width: '260px', textAlign: 'center' }} />
+                ตำแหน่ง<input type="text" readOnly={!canEditReporterFields} value={reporterPosition} onChange={(e) => setReporterPosition(e.target.value)} style={{ width: '260px', textAlign: 'center' }} />
               </div>
             </div>
 
             <div className="signature-box">
               <div>ความเห็นของหัวหน้าฝ่าย/หัวหน้ากลุ่มงาน</div>
-              {isHeadApproved ? (
+              {isHeadApproved || canEditHeadFields ? (
                 <>
                   <div className="row" style={{ justifyContent: 'center' }}>
-                    <input type="text" value={headOpinion} onChange={(e) => setHeadOpinion(e.target.value)} style={{ width: '300px', textAlign: 'center' }} />
+                    <input type="text" readOnly={!canEditHeadFields} value={headOpinion} onChange={(e) => setHeadOpinion(e.target.value)} style={{ width: '300px', textAlign: 'center' }} />
                   </div>
                   <div className="row" style={{ justifyContent: 'center' }}>
-                    ลงชื่อ<input type="text" value={headSign} onChange={(e) => setHeadSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />
+                    ลงชื่อ<input type="text" readOnly={!canEditHeadFields} value={headSign} onChange={(e) => setHeadSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />
                   </div>
                   <div className="row" style={{ justifyContent: 'left' }}>
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                    <input type="text" value={headFullName} onChange={(e) => setHeadFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                    <input type="text" readOnly={!canEditHeadFields} value={headFullName} onChange={(e) => setHeadFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
                   </div>
                   <div className="row" style={{ justifyContent: 'center' }}>
-                    ตำแหน่ง<input type="text" value={headPosition} onChange={(e) => setHeadPosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
+                    ตำแหน่ง<input type="text" readOnly={!canEditHeadFields} value={headPosition} onChange={(e) => setHeadPosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
                   </div>
+                  {!isHeadApproved && (
+                    <div className="text-[10px] text-amber-600 font-bold no-print text-center pt-1">
+                      ⏳ กำลังแสดงตัวอย่างจากบัญชีที่ล็อกอิน (กด "อนุมัติใบแจ้งซ่อมนี้" ด้านบนเพื่อยืนยันลงนาม)
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -852,7 +1064,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             </div>
           </div>
 
-          {/* ซ่อมบำรุง */}
+          {/* ซ่อมบำรุง (General Mechanic / Admin / Super Admin) */}
           <div>
             <div style={{ paddingLeft: '0px', marginTop: '5px' }}>
               <div className="row">บันทึกหน่วยงานซ่อมบำรุง/ฝ่ายบริหารทั่วไป</div>
@@ -860,24 +1072,24 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             </div>
             <div className="row">
               <label className="checkbox-label">
-                <input type="checkbox" checked={chkSelfFree} onChange={(e) => setChkSelfFree(e.target.checked)} />&nbsp;ซ่อมได้เองโดยช่างของโรงพยาบาล ไม่เสียค่าใช้จ่าย
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkSelfFree} onChange={(e) => setChkSelfFree(e.target.checked)} />&nbsp;ซ่อมได้เองโดยช่างของโรงพยาบาล ไม่เสียค่าใช้จ่าย
               </label>
             </div>
             <div className="row">
               <label className="checkbox-label">
-                <input type="checkbox" checked={chkSelfCost} onChange={(e) => setChkSelfCost(e.target.checked)} />&nbsp;ซ่อมได้เองโดยช่างของโรงพยาบาลโดยเสียค่าวัสดุเพิ่มเติม
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkSelfCost} onChange={(e) => setChkSelfCost(e.target.checked)} />&nbsp;ซ่อมได้เองโดยช่างของโรงพยาบาลโดยเสียค่าวัสดุเพิ่มเติม
               </label>
             </div>
             <div className="row">
               <label className="checkbox-label">
-                <input type="checkbox" checked={chkGovTech} onChange={(e) => setChkGovTech(e.target.checked)} />&nbsp;ส่งซ่อมกองช่างบำรุง
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkGovTech} onChange={(e) => setChkGovTech(e.target.checked)} />&nbsp;ส่งซ่อมกองช่างบำรุง
               </label>
             </div>
             <div className="row">
               <label className="checkbox-label">
-                <input type="checkbox" checked={chkSelfCost || chkSelfFree} onChange={(e) => setChkSelfCost(e.target.checked)} />&nbsp;ระยะเวลาการซ่อมประมาณ
-                <input type="text" value={repairDays} onChange={(e) => setRepairDays(e.target.value)} style={{ width: '40px', textAlign: 'center' }} />วัน&nbsp;&nbsp;ค่าใช้จ่ายประมาณ
-                <input type="text" value={repairCost} onChange={(e) => setRepairCost(e.target.value)} style={{ width: '70px', textAlign: 'center' }} />บาท
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkSelfCost || chkSelfFree} onChange={(e) => setChkSelfCost(e.target.checked)} />&nbsp;ระยะเวลาการซ่อมประมาณ
+                <input type="text" readOnly={!canEditMaintFields} value={repairDays} onChange={(e) => setRepairDays(e.target.value)} style={{ width: '40px', textAlign: 'center' }} />วัน&nbsp;&nbsp;ค่าใช้จ่ายประมาณ
+                <input type="text" readOnly={!canEditMaintFields} value={repairCost} onChange={(e) => setRepairCost(e.target.value)} style={{ width: '70px', textAlign: 'center' }} />บาท
               </label>
             </div>
             <div style={{ paddingLeft: '0px', marginTop: '5px' }}>
@@ -885,14 +1097,14 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             </div>
             <div className="row">
               <label className="checkbox-label">
-                <input type="checkbox" checked={chkOutside} onChange={(e) => setChkOutside(e.target.checked)} />&nbsp;ส่งซ่อมบริษัท
-                <input type="text" value={outsideCompany} onChange={(e) => setOutsideCompany(e.target.value)} style={{ width: '180px', textAlign: 'center' }} />
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkOutside} onChange={(e) => setChkOutside(e.target.checked)} />&nbsp;ส่งซ่อมบริษัท
+                <input type="text" readOnly={!canEditMaintFields} value={outsideCompany} onChange={(e) => setOutsideCompany(e.target.value)} style={{ width: '180px', textAlign: 'center' }} />
               </label>
             </div>
             <div className="row">
               <label className="checkbox-label">
-                <input type="checkbox" checked={chkOther} onChange={(e) => setChkOther(e.target.checked)} />&nbsp;อื่นๆ
-                <input type="text" value={otherDetails} onChange={(e) => setOtherDetails(e.target.value)} style={{ width: '230px', textAlign: 'center' }} />
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkOther} onChange={(e) => setChkOther(e.target.checked)} />&nbsp;อื่นๆ
+                <input type="text" readOnly={!canEditMaintFields} value={otherDetails} onChange={(e) => setOtherDetails(e.target.value)} style={{ width: '230px', textAlign: 'center' }} />
               </label>
             </div>
           </div>
@@ -901,11 +1113,11 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
           <div className="grid-2" style={{ marginTop: '10px' }}>
             <div className="signature-box" style={{ alignItems: 'flex-start' }}>
               <div className="row" style={{ justifyContent: 'center' }}>
-                ลงชื่อ<input type="text" value={maintSign} onChange={(e) => setMaintSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />หน่วยงานซ่อมบำรุง
+                ลงชื่อ<input type="text" readOnly={!canEditMaintFields} value={maintSign} onChange={(e) => setMaintSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />หน่วยงานซ่อมบำรุง
               </div>
               <div className="row" style={{ justifyContent: 'left', marginBottom: '5px' }}>
                 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                <input type="text" value={maintFullName} onChange={(e) => setMaintFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                <input type="text" readOnly={!canEditMaintFields} value={maintFullName} onChange={(e) => setMaintFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
               </div>
             </div>
           </div>
@@ -915,20 +1127,20 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             <div>
               <span className="bold">จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ</span><br />
               <br />
-              {isSupplyApproved ? (
+              {isSupplyApproved || canEditSupplyFields ? (
                 <>
                   <div className="row" style={{ marginTop: '4px' }}>
-                    (ลงชื่อ)<input type="text" value={repairRequest.supplyOfficerApprovedBy || procureSign} onChange={(e) => setProcureSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                    (ลงชื่อ)<input type="text" readOnly={!canEditSupplyFields} value={procureSign} onChange={(e) => setProcureSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
                   </div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;({repairRequest.supplyOfficerApprovedBy || 'นางสาวชุติญา จรัสกุลธาดา'})</div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ตำแหน่ง&nbsp;หัวหน้าเจ้าหน้าที่</div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;({procureSign || '......................................'})</div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ตำแหน่ง&nbsp;หัวหน้าเจ้าหน้าที่พัสดุ</div>
                 </>
               ) : (
                 <div className="space-y-1">
                   <div className="row" style={{ marginTop: '4px' }}>(ลงชื่อ)..................................................</div>
                   <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ตำแหน่ง&nbsp;หัวหน้าเจ้าหน้าที่</div>
-                  <div className="text-[10px] text-amber-600 font-bold no-print">⚠️ รอหัวหน้าเจ้าหน้าที่พัสดุอนุมัติ</div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ตำแหน่ง&nbsp;หัวหน้าเจ้าหน้าที่พัสดุ</div>
+                  <div className="text-[10px] text-amber-600 font-bold no-print">⚠️ รอหัวหน้าเจ้าหน้าที่พัสดุ (Supply Officer) อนุมัติ</div>
                 </div>
               )}
             </div>
@@ -937,19 +1149,19 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
               <span className="bold">บันทึกหน่วยงานรับซ่อมบำรุง/บันทึกผู้ส่งของ</span><br />
               ได้รับการซ่อมบำรุงตามรายการข้างต้นเรียบร้อยแล้ว<br />
               <br />
-              {isTechnicianDone ? (
+              {isTechnicianDone || canEditOtherFields ? (
                 <>
                   <div className="row" style={{ marginTop: '4px' }}>
-                    &nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)<input type="text" value={repairRequest.maintCompletedBy || deliverSign} onChange={(e) => setDeliverSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                    &nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)<input type="text" readOnly={!canEditOtherFields} value={repairRequest.maintCompletedBy || deliverSign} onChange={(e) => setDeliverSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
                   </div>
                   <div className="row">
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                    <input type="text" value={repairRequest.maintCompletedBy || deliverFullName} onChange={(e) => setDeliverFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                    <input type="text" readOnly={!canEditOtherFields} value={repairRequest.maintCompletedBy || deliverFullName} onChange={(e) => setDeliverFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
                   </div>
                   <div className="row">
-                    วันที่<input type="text" value={deliverDay} onChange={(e) => setDeliverDay(e.target.value)} style={{ width: '40px', textAlign: 'center' }} />
-                    เดือน<input type="text" value={deliverMonth} onChange={(e) => setDeliverMonth(e.target.value)} style={{ width: '90px', textAlign: 'center' }} />
-                    พ.ศ.<input type="text" value={deliverYear} onChange={(e) => setDeliverYear(e.target.value)} style={{ width: '60px', textAlign: 'center' }} />
+                    วันที่<input type="text" readOnly={!canEditOtherFields} value={deliverDay} onChange={(e) => setDeliverDay(e.target.value)} style={{ width: '40px', textAlign: 'center' }} />
+                    เดือน<input type="text" readOnly={!canEditOtherFields} value={deliverMonth} onChange={(e) => setDeliverMonth(e.target.value)} style={{ width: '90px', textAlign: 'center' }} />
+                    พ.ศ.<input type="text" readOnly={!canEditOtherFields} value={deliverYear} onChange={(e) => setDeliverYear(e.target.value)} style={{ width: '60px', textAlign: 'center' }} />
                   </div>
                 </>
               ) : (
@@ -966,14 +1178,14 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
           <div className="grid-2" style={{ marginTop: '10px' }}>
             <div>
               <span className="bold">ความคิดเห็นของผู้มีอำนาจอนุมัติ</span><br />
-              {isDirectorApproved ? (
+              {isDirectorApproved || canEditOtherFields ? (
                 <>
-                  <input type="text" value={repairRequest.approverComments || approverComments1} onChange={(e) => setApproverComments1(e.target.value)} style={{ width: '200px', textAlign: 'center' }} /><br />
-                  <input type="text" value={approverComments2} onChange={(e) => setApproverComments2(e.target.value)} style={{ width: '200px', textAlign: 'center' }} /><br />
+                  <input type="text" readOnly={!canEditOtherFields} value={repairRequest.approverComments || approverComments1} onChange={(e) => setApproverComments1(e.target.value)} style={{ width: '200px', textAlign: 'center' }} /><br />
+                  <input type="text" readOnly={!canEditOtherFields} value={approverComments2} onChange={(e) => setApproverComments2(e.target.value)} style={{ width: '200px', textAlign: 'center' }} /><br />
                   <div className="row" style={{ marginTop: '4px' }}>
-                    (ลงชื่อ)<input type="text" value={repairRequest.directorApprovedBy || approverSign} onChange={(e) => setApproverSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                    (ลงชื่อ)<input type="text" readOnly={!canEditOtherFields} value={repairRequest.directorApprovedBy || approverSign} onChange={(e) => setApproverSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
                   </div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;({repairRequest.directorApprovedBy || 'นายจิรวัฒน์ วงษ์สวัสดิ์'})</div>
+                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;({repairRequest.directorApprovedBy || approverSign || '......................................'})</div>
                   <div className="row">นายแพทย์ชำนาญการ (ด้านเวชกรรม)</div>
                   <div className="row">ตำแหน่ง&nbsp;ผู้อำนวยการโรงพยาบาลสังขละบุรี</div>
                 </>
@@ -991,17 +1203,17 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             <div>
               <span className="bold">บันทึกหน่วยงานรับซ่อมบำรุง/บันทึกผู้รับของ</span><br />
               ได้รับการซ่อมบำรุงตามรายการข้างต้นเรียบร้อยแล้ว<br />
-              {isItemReceived ? (
+              {isItemReceived || canEditOtherFields ? (
                 <>
                   <div className="row" style={{ marginTop: '5px' }}>
-                    &nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)<input type="text" value={repairRequest.itemReceivedBy || receiveSign} onChange={(e) => setReceiveSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                    &nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)<input type="text" readOnly={!canEditOtherFields} value={repairRequest.itemReceivedBy || receiveSign} onChange={(e) => setReceiveSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
                   </div>
                   <div className="row">
                     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                    <input type="text" value={repairRequest.itemReceivedBy || receiveFullName} onChange={(e) => setReceiveFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                    <input type="text" readOnly={!canEditOtherFields} value={repairRequest.itemReceivedBy || receiveFullName} onChange={(e) => setReceiveFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
                   </div>
                   <div className="row">
-                    ตำแหน่ง<input type="text" value={receivePosition} onChange={(e) => setReceivePosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
+                    ตำแหน่ง<input type="text" readOnly={!canEditOtherFields} value={receivePosition} onChange={(e) => setReceivePosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
                   </div>
                 </>
               ) : (

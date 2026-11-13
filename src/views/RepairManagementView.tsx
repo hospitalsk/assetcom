@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Wrench, Plus, AlertTriangle, Printer, ExternalLink, FileText, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Wrench, Plus, AlertTriangle, Printer, FileText, Lock } from 'lucide-react';
 import { LineOARepairNotifier } from '../components/LineOARepairNotifier';
 import { OfficialRepairPrintModal } from '../components/OfficialRepairPrintModal';
-import { MemoFormData, printOfficialMemoDocument, openOfficialMemoInNewWindow } from '../utils/printMemoHelper';
+import { getUserRoleFlags } from '../utils/permissions';
+import { showSwalAlert, showSwalToast } from '../utils/swal';
 
 export const RepairManagementView: React.FC = () => {
   const { repairRequests, assets, departments, users, addRepairRequest, currentUser, getActiveRepairForAsset, settings } = useApp();
@@ -23,75 +24,114 @@ export const RepairManagementView: React.FC = () => {
   const defaultAsset = assets[0];
   const defaultDept = departments.find(d => d.id === currentUser.departmentId) || departments[0];
 
+  const roleFlags = getUserRoleFlags(currentUser);
+  const canEditHeadSection = roleFlags.isDepartmentHead || roleFlags.isAdmin;
+  const canEditMaintenanceSection = roleFlags.isGeneralMechanic || roleFlags.isAdmin;
+  const canEditSupplySection = roleFlags.isSupplyOfficer || roleFlags.isAdmin;
+  const canEditOtherOfficialSections = roleFlags.isAdmin;
+
+  const findDeptHeadForDept = (deptId: string) =>
+    users.find(u => getUserRoleFlags(u).isDepartmentHead && u.departmentId === deptId) ||
+    users.find(u => getUserRoleFlags(u).isDepartmentHead);
+
+  const findSupplyUser = () =>
+    users.find(u => getUserRoleFlags(u).isSupplyOfficer);
+
+  const findApproverUser = () =>
+    users.find(u => getUserRoleFlags(u).isApprover);
+
+  const buildInitialFormData = () => {
+    const curNow = new Date();
+    const curDateStr = `${curNow.getDate()} ${thaiMonths[curNow.getMonth()]} ${curNow.getFullYear() + 543}`;
+    const curAsset = assets[0];
+    const curDept = departments.find(d => d.id === currentUser.departmentId) || departments[0];
+    const deptHeadMatch = roleFlags.isDepartmentHead ? currentUser : findDeptHeadForDept(curDept?.id || '');
+    const supplyMatch = roleFlags.isSupplyOfficer ? currentUser : findSupplyUser();
+    const approverMatch = roleFlags.isApprover ? currentUser : findApproverUser();
+
+    return {
+      // Standard repair fields
+      assetId: curAsset?.id || '',
+      reporterId: currentUser.id,
+      departmentId: currentUser.departmentId || curDept?.id || '',
+      issueDescription: '',
+      urgency: 'ปกติ' as 'ปกติ' | 'ด่วน' | 'ด่วนมาก / ฉุกเฉิน',
+      repairMethod: '',
+      laborCost: 0,
+      partsCost: 0,
+      spareParts: [] as { id: string; partName: string; qty: number; unitPrice: number }[],
+      notes: '',
+
+      // Official Memo Header (Editable by Reporter & Admin)
+      agency: `${settings.organizationName || 'โรงพยาบาลสังขละบุรี'} ฝ่ายบริหารทั่วไป ${settings.orgPhone ? `โทร. ${settings.orgPhone}` : 'โทร. ๐๓๔-๕๙๕๐๓๐ ต่อ ๒๐๕'}`,
+      docNumber: `${curNow.getFullYear() + 543}/01`,
+      docDate: curDateStr,
+      deptName: curDept?.name || 'กลุ่มงานบริหารทั่วไป',
+
+      // Category Radio (Editable by Reporter & Admin)
+      category: 'สำนักงาน',
+
+      // Item Details (Editable by Reporter & Admin)
+      machineName: curAsset?.name || '',
+      machineModel: curAsset?.model || '',
+      assetNumber: curAsset?.assetCode || curAsset?.serialNumber || '',
+      vendorCompany: curAsset?.vendorName || '',
+      vendorPhone: curAsset?.vendorPhone || '',
+      quantity: '1 เครื่อง',
+
+      // Signatures Part 1: Reporter (Editable by Reporter & Admin)
+      senderSign: currentUser.name,
+      senderName: currentUser.name,
+      senderPosition: currentUser.position || 'เจ้าหน้าที่',
+
+      // Department Head (Editable by Department Head & Admin)
+      headOpinion: 'เห็นควรอนุมัติให้ดำเนินการซ่อมบำรุงตามเสนอ',
+      headSign: roleFlags.isDepartmentHead ? currentUser.name : (deptHeadMatch?.name || ''),
+      headName: roleFlags.isDepartmentHead ? currentUser.name : (deptHeadMatch?.name || ''),
+      headPosition: roleFlags.isDepartmentHead ? (currentUser.position || 'หัวหน้าฝ่าย/หัวหน้ากลุ่มงาน') : (deptHeadMatch?.position || 'หัวหน้าฝ่าย/หัวหน้ากลุ่มงาน'),
+
+      // Maintenance Dept (Editable ONLY by General Mechanic, Admin, Super Admin)
+      canSelfRepairFree: false,
+      canSelfRepairWithCost: false,
+      sendToGovTech: false,
+      repairDays: '',
+      repairCost: '',
+      sendToOutsideCompany: false,
+      outsideCompanyName: '',
+      otherOption: false,
+      otherOptionDetails: '',
+      maintenanceSign: canEditMaintenanceSection ? currentUser.name : '',
+      maintenanceName: canEditMaintenanceSection ? currentUser.name : '',
+
+      // Supply Officer (Editable by Supply Officer & Admin)
+      procureSign: roleFlags.isSupplyOfficer ? currentUser.name : (supplyMatch?.name || ''),
+      procureName: roleFlags.isSupplyOfficer ? currentUser.name : (supplyMatch?.name || ''),
+
+      // Other Official Sections (Editable ONLY by Admin / Super Admin)
+      deliverySign: '',
+      deliveryName: '',
+      deliveryDay: String(curNow.getDate()),
+      deliveryMonth: thaiMonths[curNow.getMonth()],
+      deliveryYear: String(curNow.getFullYear() + 543),
+      approverComment1: 'อนุมัติให้ดำเนินการซ่อมบำรุงได้',
+      approverComment2: '',
+      approverSign: approverMatch?.name || settings.approverName || '',
+      receiveSign: '',
+      receiveName: '',
+      receivePosition: 'เจ้าหน้าที่ผู้รับของ',
+    };
+  };
+
   // Comprehensive Form State encompassing all fields in the Official Memorandum
-  const [formData, setFormData] = useState({
-    // Standard repair fields
-    assetId: defaultAsset?.id || '',
-    reporterId: currentUser.id,
-    departmentId: currentUser.departmentId || defaultDept?.id || '',
-    issueDescription: '',
-    urgency: 'ปกติ' as const,
-    repairMethod: '',
-    laborCost: 0,
-    partsCost: 0,
-    spareParts: [] as { id: string; partName: string; qty: number; unitPrice: number }[],
-    notes: '',
+  const [formData, setFormData] = useState(buildInitialFormData);
 
-    // Official Memo Header
-    agency: 'โรงพยาบาลสังขละบุรี ฝ่ายบริหารทั่วไป โทร. ๐๓๔-๕๙๕๐๓๐ ต่อ ๒๐๕',
-    docNumber: '2568/01',
-    docDate: defaultDateStr,
-    deptName: defaultDept?.name || 'กลุ่มงานบริหารทั่วไป',
-
-    // Category Radio
-    category: 'สำนักงาน',
-
-    // Item Details
-    machineName: defaultAsset?.name || '',
-    machineModel: defaultAsset?.model || '',
-    assetNumber: defaultAsset?.assetCode || defaultAsset?.serialNumber || '',
-    vendorCompany: defaultAsset?.vendorName || '',
-    vendorPhone: defaultAsset?.vendorPhone || '',
-    quantity: '1 เครื่อง',
-
-    // Signatures Part 1: Reporter
-    senderSign: currentUser.name,
-    senderName: currentUser.name,
-    senderPosition: currentUser.position || 'เจ้าหน้าที่',
-
-    // Department Head
-    headOpinion: 'เห็นควรอนุมัติให้ดำเนินการซ่อมบำรุงตามเสนอ',
-    headSign: 'ดร. สมชาย ใจดี',
-    headName: 'ดร. สมชาย ใจดี',
-    headPosition: 'หัวหน้าฝ่ายบริหารทั่วไป',
-
-    // Maintenance Dept
-    canSelfRepairFree: false,
-    canSelfRepairWithCost: true,
-    sendToGovTech: false,
-    repairDays: '3',
-    repairCost: '850',
-    sendToOutsideCompany: false,
-    outsideCompanyName: '',
-    otherOption: false,
-    otherOptionDetails: '',
-    maintenanceSign: currentUser.name,
-    maintenanceName: currentUser.name,
-
-    // Approval & Delivery
-    procureSign: 'ชุติญา จรัสกุลธาดา',
-    deliverySign: currentUser.name,
-    deliveryName: currentUser.name,
-    deliveryDay: String(now.getDate()),
-    deliveryMonth: thaiMonths[now.getMonth()],
-    deliveryYear: String(now.getFullYear() + 543),
-    approverComment1: 'อนุมัติให้ดำเนินการซ่อมบำรุงได้',
-    approverComment2: '',
-    approverSign: 'จิรวัฒน์ วงษ์สวัสดิ์',
-    receiveSign: currentUser.name,
-    receiveName: currentUser.name,
-    receivePosition: currentUser.position || 'เจ้าหน้าที่ผู้รับของ',
-  });
+  // Re-sync logged-in user and defaults when modal opens or logged-in user changes
+  useEffect(() => {
+    if (showAddModal) {
+      setFormData(buildInitialFormData());
+      setActiveTabSection('main');
+    }
+  }, [showAddModal, currentUser.id, currentUser.role]);
 
   const selectedActiveRepair = getActiveRepairForAsset 
     ? getActiveRepairForAsset(formData.assetId) 
@@ -111,76 +151,102 @@ export const RepairManagementView: React.FC = () => {
     }));
   };
 
-  const getMemoDataFromForm = (repairNo?: string): MemoFormData => ({
-    emblemUrl: settings.emblemUrl,
-    agency: formData.agency,
-    docNumber: repairNo ? repairNo.replace('REP-', '') : formData.docNumber,
-    docDate: formData.docDate,
-    deptName: formData.deptName,
-    category: formData.category,
-    machineName: formData.machineName,
-    machineModel: formData.machineModel,
-    issueDescription: formData.issueDescription,
-    assetNumber: formData.assetNumber,
-    vendorCompany: formData.vendorCompany,
-    vendorPhone: formData.vendorPhone,
-    quantity: formData.quantity,
-    senderSign: formData.senderSign,
-    senderName: formData.senderName,
-    senderPosition: formData.senderPosition,
-    headOpinion: formData.headOpinion,
-    headSign: formData.headSign,
-    headName: formData.headName,
-    headPosition: formData.headPosition,
-    canSelfRepairFree: formData.canSelfRepairFree,
-    canSelfRepairWithCost: formData.canSelfRepairWithCost,
-    sendToGovTech: formData.sendToGovTech,
-    repairDays: formData.repairDays,
-    repairCost: formData.repairCost,
-    sendToOutsideCompany: formData.sendToOutsideCompany,
-    outsideCompanyName: formData.outsideCompanyName,
-    otherOption: formData.otherOption,
-    otherOptionDetails: formData.otherOptionDetails,
-    maintenanceSign: formData.maintenanceSign,
-    maintenanceName: formData.maintenanceName,
-    procureSign: formData.procureSign,
-    deliverySign: formData.deliverySign,
-    deliveryName: formData.deliveryName,
-    deliveryDay: formData.deliveryDay,
-    deliveryMonth: formData.deliveryMonth,
-    deliveryYear: formData.deliveryYear,
-    approverComment1: formData.approverComment1,
-    approverComment2: formData.approverComment2,
-    approverSign: formData.approverSign,
-    approverName: 'นายจิรวัฒน์ วงษ์สวัสดิ์',
-    receiveSign: formData.receiveSign,
-    receiveName: formData.receiveName,
-    receivePosition: formData.receivePosition,
-  });
-
-  const handleCreateRepair = (e?: React.FormEvent, printDirectly: boolean = false, openNewTab: boolean = false) => {
+  const handleCreateRepair = (e?: React.FormEvent, printDirectly: boolean = false) => {
     if (e) e.preventDefault();
-    if (selectedActiveRepair) {
-      alert(`⚠️ ป้องกันการส่งซ่อมซ้ำ!\nครุภัณฑ์นี้มีใบแจ้งซ่อมเลขที่ [${selectedActiveRepair.repairNo}] อยู่แล้วในระบบ (สถานะ: ${selectedActiveRepair.status})`);
+    if (!formData.assetId) {
+      showSwalAlert('warning', 'ไม่พบข้อมูลครุภัณฑ์', 'กรุณาเลือกครุภัณฑ์ที่ต้องการแจ้งซ่อม');
       return;
     }
-    if (!formData.issueDescription) {
-      alert('กรุณากรอกลักษณะ/อาการชำรุด');
+    if (selectedActiveRepair) {
+      showSwalAlert(
+        'warning',
+        'ป้องกันการส่งซ่อมซ้ำ!',
+        `ครุภัณฑ์นี้มีใบแจ้งซ่อมเลขที่ [${selectedActiveRepair.repairNo}] อยู่แล้วในระบบ (สถานะ: ${selectedActiveRepair.status})`
+      );
+      return;
+    }
+    if (!formData.issueDescription.trim()) {
+      showSwalAlert('warning', 'ข้อมูลไม่ครบถ้วน', 'กรุณากรอกลักษณะ/อาการชำรุด');
       return;
     }
     try {
-      const parsedCost = parseFloat(formData.repairCost) || 0;
+      const parsedCost = canEditMaintenanceSection ? (parseFloat(formData.repairCost) || 0) : 0;
+
+      // Persist reporter-editable fields plus any authorized role section fields
+      const memoPayload: Record<string, any> = {
+        agency: formData.agency,
+        docNumber: formData.docNumber,
+        docDate: formData.docDate,
+        deptName: formData.deptName,
+        category: formData.category,
+        machineName: formData.machineName,
+        machineModel: formData.machineModel,
+        assetNumber: formData.assetNumber,
+        vendorCompany: formData.vendorCompany,
+        vendorPhone: formData.vendorPhone,
+        quantity: formData.quantity,
+        senderSign: formData.senderSign,
+        senderName: formData.senderName,
+        senderPosition: formData.senderPosition,
+      };
+
+      if (canEditHeadSection) {
+        memoPayload.headOpinion = formData.headOpinion;
+        memoPayload.headSign = formData.headSign;
+        memoPayload.headName = formData.headName;
+        memoPayload.headPosition = formData.headPosition;
+      }
+
+      if (canEditMaintenanceSection) {
+        memoPayload.canSelfRepairFree = formData.canSelfRepairFree;
+        memoPayload.canSelfRepairWithCost = formData.canSelfRepairWithCost;
+        memoPayload.sendToGovTech = formData.sendToGovTech;
+        memoPayload.repairDays = formData.repairDays;
+        memoPayload.repairCost = formData.repairCost;
+        memoPayload.sendToOutsideCompany = formData.sendToOutsideCompany;
+        memoPayload.outsideCompanyName = formData.outsideCompanyName;
+        memoPayload.otherOption = formData.otherOption;
+        memoPayload.otherOptionDetails = formData.otherOptionDetails;
+        memoPayload.maintenanceSign = formData.maintenanceSign;
+        memoPayload.maintenanceName = formData.maintenanceName;
+      }
+
+      if (canEditSupplySection) {
+        memoPayload.procureSign = formData.procureSign;
+        memoPayload.procureName = formData.procureName;
+      }
+
+      if (canEditOtherOfficialSections) {
+        memoPayload.deliverySign = formData.deliverySign;
+        memoPayload.deliveryName = formData.deliveryName;
+        memoPayload.deliveryDay = formData.deliveryDay;
+        memoPayload.deliveryMonth = formData.deliveryMonth;
+        memoPayload.deliveryYear = formData.deliveryYear;
+        memoPayload.approverComment1 = formData.approverComment1;
+        memoPayload.approverComment2 = formData.approverComment2;
+        memoPayload.approverSign = formData.approverSign;
+        memoPayload.receiveSign = formData.receiveSign;
+        memoPayload.receiveName = formData.receiveName;
+        memoPayload.receivePosition = formData.receivePosition;
+      }
+
       const created = addRepairRequest({
         assetId: formData.assetId,
         reporterId: currentUser.id,
         departmentId: formData.departmentId,
-        issueDescription: formData.issueDescription,
+        issueDescription: formData.issueDescription.trim(),
         urgency: formData.urgency,
-        repairMethod: formData.repairMethod || (formData.canSelfRepairFree ? 'ซ่อมเองไม่เสียค่าใช้จ่าย' : 'ซ่อมเองโดยซื้ออะไหล่'),
+        repairMethod: canEditMaintenanceSection
+          ? (formData.repairMethod || (formData.canSelfRepairFree ? 'ซ่อมเองไม่เสียค่าใช้จ่าย' : formData.canSelfRepairWithCost ? 'ซ่อมเองโดยซื้ออะไหล่' : ''))
+          : '',
         laborCost: 0,
         partsCost: parsedCost,
         spareParts: formData.spareParts,
-        notes: `บันทึกข้อความ ที่ กจ ${formData.docNumber} | หมวด: ${formData.category}`,
+        sentDate: new Date().toISOString(),
+        headOpinion: canEditHeadSection ? formData.headOpinion : undefined,
+        headPosition: canEditHeadSection ? formData.headPosition : undefined,
+        notes: `บันทึกข้อความ ที่ กจ ๐๐๓.๓๐๘.๑/${formData.docNumber} | หมวด: ${formData.category}`,
+        memoData: memoPayload
       });
 
       setShowAddModal(false);
@@ -189,6 +255,13 @@ export const RepairManagementView: React.FC = () => {
       if (printDirectly) {
         setRepairForPrint(created);
         setShowPrintModal(true);
+        showSwalToast('success', `บันทึกใบแจ้งซ่อม ${created.repairNo} สำเร็จ`);
+      } else {
+        showSwalAlert(
+          'success',
+          'บันทึกใบแจ้งซ่อมเรียบร้อยแล้ว',
+          `เลขที่ใบแจ้งซ่อม ${created.repairNo} ถูกส่งเข้าระบบเพื่อรอหัวหน้ากลุ่มงานอนุมัติแล้ว`
+        );
       }
     } catch (err: any) {
       console.error(err);
@@ -303,7 +376,7 @@ export const RepairManagementView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={(e) => handleCreateRepair(e, false, false)} className="space-y-4">
+            <form onSubmit={(e) => handleCreateRepair(e, false)} className="space-y-4">
               
               {/* SECTION 1: MAIN REPAIR & ASSET DETAILS */}
               {activeTabSection === 'main' && (
@@ -331,6 +404,7 @@ export const RepairManagementView: React.FC = () => {
                       onChange={(e) => handleAssetChange(e.target.value)}
                       className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 outline-hidden focus:ring-2 focus:ring-blue-500 font-medium bg-slate-50/50"
                     >
+                      {assets.length === 0 && <option value="">-- ยังไม่มีข้อมูลครุภัณฑ์ในระบบ --</option>}
                       {assets.map(ast => {
                         const active = getActiveRepairForAsset 
                           ? getActiveRepairForAsset(ast.id) 
@@ -355,7 +429,7 @@ export const RepairManagementView: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Category Radio from User's HTML */}
+                  {/* Category Radio */}
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                     <label className="block text-xs font-bold text-slate-800 mb-2">
                       หมวดหมู่พัสดุ-ครุภัณฑ์ (ตามแบบฟอร์มราชการ)
@@ -476,7 +550,15 @@ export const RepairManagementView: React.FC = () => {
                           onChange={(e) => {
                             const dId = e.target.value;
                             const dObj = departments.find(d => d.id === dId);
-                            setFormData({ ...formData, departmentId: dId, deptName: dObj?.name || formData.deptName });
+                            const nextHead = roleFlags.isDepartmentHead ? currentUser : findDeptHeadForDept(dId);
+                            setFormData({
+                              ...formData,
+                              departmentId: dId,
+                              deptName: dObj?.name || formData.deptName,
+                              headSign: nextHead?.name || formData.headSign,
+                              headName: nextHead?.name || formData.headName,
+                              headPosition: nextHead?.position || formData.headPosition,
+                            });
                           }}
                           className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300"
                         >
@@ -490,11 +572,23 @@ export const RepairManagementView: React.FC = () => {
                 </div>
               )}
 
-              {/* SECTION 2: OFFICIAL MEMORANDUM & SIGNATURES */}
+              {/* SECTION 2: OFFICIAL MEMORANDUM & SIGNATURES (ROLE-LOCKED) */}
               {activeTabSection === 'official_memo' && (
                 <div className="space-y-4 animate-in fade-in">
+                  <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl text-[11px] text-blue-900 flex items-start space-x-2">
+                    <Lock className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-bold">สิทธิ์การกรอกแบบฟอร์มมาตรฐานโรงพยาบาล ({currentUser.role}):</span>{' '}
+                      ผู้แจ้งซ่อมสามารถแก้ไข <span className="font-bold">ส่วนหัวบันทึกข้อความราชการ</span> และ <span className="font-bold">ผู้ส่งซ่อม</span> ส่วนอื่นๆ ระบบจำกัดสิทธิ์ตามตำแหน่งหน้าที่ (หัวหน้าฝ่ายฯ, หน่วยงานซ่อมบำรุง/ช่าง, หัวหน้าเจ้าหน้าที่พัสดุ และ Admin/Super Admin) เพื่อคงรูปแบบมาตรฐานเดียวกันทั้งโรงพยาบาล
+                    </div>
+                  </div>
+
+                  {/* Header Section: Reporter & Admin editable */}
                   <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                    <h4 className="text-xs font-bold text-slate-800 mb-2">ส่วนหัวบันทึกข้อความราชการ</h4>
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-bold text-slate-800">ส่วนหัวบันทึกข้อความราชการ</h4>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✏️ ผู้แจ้งซ่อมแก้ไขได้</span>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="sm:col-span-2">
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">ส่วนราชการ</label>
@@ -538,8 +632,12 @@ export const RepairManagementView: React.FC = () => {
 
                   {/* Signatures Part 1 */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Reporter: Editable */}
                     <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                      <div className="text-xs font-bold text-slate-800">ผู้ส่งซ่อม</div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold text-slate-800">ผู้ส่งซ่อม</div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✏️ ผู้แจ้งซ่อมแก้ไขได้</span>
+                      </div>
                       <div>
                         <label className="block text-[11px] text-slate-600">ลงชื่อผู้ส่งซ่อม</label>
                         <input
@@ -569,69 +667,98 @@ export const RepairManagementView: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                      <div className="text-xs font-bold text-slate-800">ความเห็นหัวหน้าฝ่าย/กลุ่มงาน</div>
+                    {/* Department Head: Editable by Department Head & Admin */}
+                    <div className={`p-3 rounded-xl border space-y-2 ${canEditHeadSection ? 'bg-slate-50 border-slate-200' : 'bg-slate-100/80 border-slate-200 opacity-85'}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold text-slate-800">ความเห็นหัวหน้าฝ่าย/กลุ่มงาน</div>
+                        {canEditHeadSection ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">✏️ Department Head / Admin</span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 flex items-center space-x-1">
+                            <Lock className="w-2.5 h-2.5" />
+                            <span>เฉพาะ Department Head / Admin</span>
+                          </span>
+                        )}
+                      </div>
                       <div>
                         <label className="block text-[11px] text-slate-600">ความเห็น</label>
                         <input
                           type="text"
+                          readOnly={!canEditHeadSection}
                           value={formData.headOpinion}
                           onChange={(e) => setFormData({ ...formData, headOpinion: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditHeadSection ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                       <div>
                         <label className="block text-[11px] text-slate-600">ลงชื่อหัวหน้าฝ่าย</label>
                         <input
                           type="text"
+                          readOnly={!canEditHeadSection}
                           value={formData.headSign}
-                          onChange={(e) => setFormData({ ...formData, headSign: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          placeholder="ดึงจากบัญชี Department Head ที่อนุมัติ"
+                          onChange={(e) => setFormData({ ...formData, headSign: e.target.value, headName: e.target.value })}
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditHeadSection ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                       <div>
                         <label className="block text-[11px] text-slate-600">ตำแหน่งหัวหน้าฝ่าย</label>
                         <input
                           type="text"
+                          readOnly={!canEditHeadSection}
                           value={formData.headPosition}
                           onChange={(e) => setFormData({ ...formData, headPosition: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditHeadSection ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* Maintenance Assessment */}
-                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                    <div className="text-xs font-bold text-slate-800">บันทึกหน่วยงานซ่อมบำรุง / ฝ่ายบริหารทั่วไป</div>
+                  {/* Maintenance Assessment: General Mechanic, Admin, Super Admin ONLY */}
+                  <div className={`p-3.5 rounded-xl border space-y-2 ${canEditMaintenanceSection ? 'bg-slate-50 border-slate-200' : 'bg-slate-100/80 border-slate-200 opacity-85'}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-bold text-slate-800">บันทึกหน่วยงานซ่อมบำรุง / ฝ่ายบริหารทั่วไป</div>
+                      {canEditMaintenanceSection ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">✏️ General Mechanic / Admin</span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 flex items-center space-x-1">
+                          <Lock className="w-2.5 h-2.5" />
+                          <span>เฉพาะ General Mechanic / Admin / Super Admin</span>
+                        </span>
+                      )}
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                      <label className="flex items-center space-x-2">
+                      <label className={`flex items-center space-x-2 ${!canEditMaintenanceSection ? 'cursor-not-allowed text-slate-500' : ''}`}>
                         <input
                           type="checkbox"
+                          disabled={!canEditMaintenanceSection}
                           checked={formData.canSelfRepairFree}
                           onChange={(e) => setFormData({ ...formData, canSelfRepairFree: e.target.checked })}
                         />
                         <span>ซ่อมได้เองโดยช่างของโรงพยาบาล ไม่เสียค่าใช้จ่าย</span>
                       </label>
-                      <label className="flex items-center space-x-2">
+                      <label className={`flex items-center space-x-2 ${!canEditMaintenanceSection ? 'cursor-not-allowed text-slate-500' : ''}`}>
                         <input
                           type="checkbox"
+                          disabled={!canEditMaintenanceSection}
                           checked={formData.canSelfRepairWithCost}
                           onChange={(e) => setFormData({ ...formData, canSelfRepairWithCost: e.target.checked })}
                         />
                         <span>ซ่อมได้เองโดยช่างของโรงพยาบาลโดยเสียค่าวัสดุเพิ่มเติม</span>
                       </label>
-                      <label className="flex items-center space-x-2">
+                      <label className={`flex items-center space-x-2 ${!canEditMaintenanceSection ? 'cursor-not-allowed text-slate-500' : ''}`}>
                         <input
                           type="checkbox"
+                          disabled={!canEditMaintenanceSection}
                           checked={formData.sendToGovTech}
                           onChange={(e) => setFormData({ ...formData, sendToGovTech: e.target.checked })}
                         />
                         <span>ส่งซ่อมกองช่างบำรุง</span>
                       </label>
-                      <label className="flex items-center space-x-2">
+                      <label className={`flex items-center space-x-2 ${!canEditMaintenanceSection ? 'cursor-not-allowed text-slate-500' : ''}`}>
                         <input
                           type="checkbox"
+                          disabled={!canEditMaintenanceSection}
                           checked={formData.sendToOutsideCompany}
                           onChange={(e) => setFormData({ ...formData, sendToOutsideCompany: e.target.checked })}
                         />
@@ -644,36 +771,40 @@ export const RepairManagementView: React.FC = () => {
                         <label className="block text-[11px] text-slate-600">ระยะเวลาประมาณ (วัน)</label>
                         <input
                           type="text"
+                          readOnly={!canEditMaintenanceSection}
                           value={formData.repairDays}
                           onChange={(e) => setFormData({ ...formData, repairDays: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditMaintenanceSection ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                       <div>
                         <label className="block text-[11px] text-slate-600">ค่าใช้จ่ายประมาณ (บาท)</label>
                         <input
                           type="text"
+                          readOnly={!canEditMaintenanceSection}
                           value={formData.repairCost}
                           onChange={(e) => setFormData({ ...formData, repairCost: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditMaintenanceSection ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                       <div>
                         <label className="block text-[11px] text-slate-600">ชื่อบริษัทส่งซ่อมภายนอก</label>
                         <input
                           type="text"
+                          readOnly={!canEditMaintenanceSection}
                           value={formData.outsideCompanyName}
                           onChange={(e) => setFormData({ ...formData, outsideCompanyName: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditMaintenanceSection ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                       <div>
                         <label className="block text-[11px] text-slate-600">ลงชื่อช่าง/หน่วยซ่อม</label>
                         <input
                           type="text"
+                          readOnly={!canEditMaintenanceSection}
                           value={formData.maintenanceSign}
-                          onChange={(e) => setFormData({ ...formData, maintenanceSign: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          onChange={(e) => setFormData({ ...formData, maintenanceSign: e.target.value, maintenanceName: e.target.value })}
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditMaintenanceSection ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                     </div>
@@ -681,46 +812,69 @@ export const RepairManagementView: React.FC = () => {
 
                   {/* Procurement & Approver Comments */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                      <div className="text-xs font-bold text-slate-800">หัวหน้าเจ้าหน้าที่พัสดุ & ผู้ส่งของ</div>
+                    <div className={`p-3 rounded-xl border space-y-2 ${canEditSupplySection || canEditOtherOfficialSections ? 'bg-slate-50 border-slate-200' : 'bg-slate-100/80 border-slate-200 opacity-85'}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold text-slate-800">หัวหน้าเจ้าหน้าที่พัสดุ & ผู้ส่งของ</div>
+                        {!canEditSupplySection && !canEditOtherOfficialSections && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 flex items-center space-x-1">
+                            <Lock className="w-2.5 h-2.5" />
+                            <span>Supply Officer / Admin</span>
+                          </span>
+                        )}
+                      </div>
                       <div>
-                        <label className="block text-[11px] text-slate-600">ลงชื่อหัวหน้าเจ้าหน้าที่</label>
+                        <label className="block text-[11px] text-slate-600">ลงชื่อหัวหน้าเจ้าหน้าที่พัสดุ (Supply Officer)</label>
                         <input
                           type="text"
+                          readOnly={!canEditSupplySection}
                           value={formData.procureSign}
-                          onChange={(e) => setFormData({ ...formData, procureSign: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          placeholder="ดึงจากบัญชี Supply Officer"
+                          onChange={(e) => setFormData({ ...formData, procureSign: e.target.value, procureName: e.target.value })}
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditSupplySection ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                       <div>
-                        <label className="block text-[11px] text-slate-600">ลงชื่อผู้ส่งของ</label>
+                        <label className="block text-[11px] text-slate-600">ลงชื่อผู้ส่งของ (เฉพาะ Admin)</label>
                         <input
                           type="text"
+                          readOnly={!canEditOtherOfficialSections}
                           value={formData.deliverySign}
-                          onChange={(e) => setFormData({ ...formData, deliverySign: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          onChange={(e) => setFormData({ ...formData, deliverySign: e.target.value, deliveryName: e.target.value })}
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditOtherOfficialSections ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                     </div>
 
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
-                      <div className="text-xs font-bold text-slate-800">ความคิดเห็นผู้อนุมัติ & ผู้รับของ</div>
+                    <div className={`p-3 rounded-xl border space-y-2 ${canEditOtherOfficialSections ? 'bg-slate-50 border-slate-200' : 'bg-slate-100/80 border-slate-200 opacity-85'}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs font-bold text-slate-800">ความคิดเห็นผู้อนุมัติ & ผู้รับของ</div>
+                        {canEditOtherOfficialSections ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">✏️ Admin</span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 flex items-center space-x-1">
+                            <Lock className="w-2.5 h-2.5" />
+                            <span>เฉพาะ Admin</span>
+                          </span>
+                        )}
+                      </div>
                       <div>
                         <label className="block text-[11px] text-slate-600">ความเห็นอนุมัติ</label>
                         <input
                           type="text"
+                          readOnly={!canEditOtherOfficialSections}
                           value={formData.approverComment1}
                           onChange={(e) => setFormData({ ...formData, approverComment1: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditOtherOfficialSections ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                       <div>
                         <label className="block text-[11px] text-slate-600">ลงชื่อผู้มีอำนาจอนุมัติ</label>
                         <input
                           type="text"
+                          readOnly={!canEditOtherOfficialSections}
                           value={formData.approverSign}
                           onChange={(e) => setFormData({ ...formData, approverSign: e.target.value })}
-                          className="w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 bg-white"
+                          className={`w-full px-2.5 py-1 text-xs rounded-lg border border-slate-300 ${canEditOtherOfficialSections ? 'bg-white' : 'bg-slate-100 text-slate-500 cursor-not-allowed'}`}
                         />
                       </div>
                     </div>
@@ -737,7 +891,7 @@ export const RepairManagementView: React.FC = () => {
                       onClick={() => setActiveTabSection('official_memo')}
                       className="text-blue-600 hover:underline font-bold"
                     >
-                      ต้องการดู/แก้ไขลายเซ็นและหัวบันทึกข้อความราชการ คลิกที่นี่ &rarr;
+                      ต้องการดู/แก้ไขส่วนหัวบันทึกข้อความราชการ & ลายเซ็นต์ คลิกที่นี่ &rarr;
                     </button>
                   ) : (
                     <button
@@ -762,7 +916,7 @@ export const RepairManagementView: React.FC = () => {
                   <button
                     type="button"
                     disabled={!!selectedActiveRepair}
-                    onClick={() => handleCreateRepair(undefined, true, false)}
+                    onClick={() => handleCreateRepair(undefined, true)}
                     className="flex items-center space-x-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 cursor-pointer disabled:opacity-50"
                   >
                     <Printer className="w-3.5 h-3.5" />

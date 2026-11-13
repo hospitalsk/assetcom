@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Wrench, CheckCircle2, AlertCircle, Send, Smartphone, User, Monitor, Check, DollarSign, Edit, Plus, Trash2, Calendar, TrendingUp, Clock, Printer, Package } from 'lucide-react';
 import { RepairStatus, RepairRequest } from '../types';
-import { canManageRepairStatus } from '../utils/permissions';
+import { canManageRepairStatus, getUserRoleFlags } from '../utils/permissions';
 import { OfficialRepairPrintModal } from './OfficialRepairPrintModal';
+import { showSwalToast } from '../utils/swal';
 
 interface LineOARepairNotifierProps {
   highlightRepairId?: string | null;
@@ -12,16 +13,16 @@ interface LineOARepairNotifierProps {
 export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ highlightRepairId }) => {
   const { repairRequests, assets, users, departments, updateRepairRequest, currentUser, settings, setActiveTab } = useApp();
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
-  const [successToast, setSuccessToast] = useState<string | null>(null);
 
   const canManage = canManageRepairStatus(currentUser.role);
-  const roleClean = (currentUser.role || '').toLowerCase().trim();
-  const isAdmin = roleClean === 'admin' || roleClean === 'super admin' || roleClean.includes('admin');
-  const isPowerUser = canManage || 
-                      roleClean.includes('approver') || 
-                      roleClean.includes('head') || 
-                      roleClean.includes('supply') || 
-                      roleClean.includes('auditor');
+  const roleFlags = getUserRoleFlags(currentUser);
+  const isAdmin = roleFlags.isAdmin;
+  const isPowerUser =
+    canManage ||
+    roleFlags.isApprover ||
+    roleFlags.isDepartmentHead ||
+    roleFlags.isSupplyOfficer ||
+    (currentUser.role || '').toLowerCase().includes('auditor');
 
   // View Scope state: Defaults to 'my' so every user sees ONLY their own repair requests
   const [viewScope, setViewScope] = useState<'my' | 'all'>('my');
@@ -142,9 +143,8 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
     });
 
     const techName = users.find(u => u.id === editForm.technicianId)?.name || currentUser.name;
-    setSuccessToast(`บันทึกช่างผู้รับซ่อม (${techName}), ค่าใช้จ่ายรวม ฿${totalCost.toLocaleString()} และอัปเดตสถานะเรียบร้อยแล้ว!`);
+    showSwalToast('success', 'บันทึกข้อมูลงานซ่อมสำเร็จ', `ช่าง: ${techName} | ค่าใช้จ่ายรวม ฿${totalCost.toLocaleString()}`);
     setEditingRepair(null);
-    setTimeout(() => setSuccessToast(null), 4000);
   };
 
   const handleAcceptJob = (repairId: string, repairNo: string) => {
@@ -153,25 +153,8 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
       technicianId: currentUser.id,
       acceptedDate: new Date().toISOString()
     });
-    setSuccessToast(`ช่าง ${currentUser.name} กดรับงานซ่อมเลขที่ ${repairNo} เรียบร้อยแล้ว (สถานะเปลี่ยนเป็น "กำลังดำเนินการ")`);
-    setTimeout(() => setSuccessToast(null), 4000);
+    showSwalToast('success', `รับงานซ่อม ${repairNo} เรียบร้อยแล้ว`, `ช่างผู้รับผิดชอบ: ${currentUser.name}`);
   };
-
-  const handleUpdateStatus = (repairId: string, newStatus: RepairStatus) => {
-    updateRepairRequest(repairId, { status: newStatus });
-    setSuccessToast(`อัปเดตสถานะการซ่อมเรียบร้อยแล้ว: ${newStatus}`);
-    setTimeout(() => setSuccessToast(null), 4000);
-  };
-
-  const canApprove = currentUser.role === 'Approver' || 
-                     currentUser.role === 'Department Head' || 
-                     currentUser.role === 'Admin' || 
-                     currentUser.role === 'Super Admin' || 
-                     (currentUser.role && (
-                       currentUser.role.toLowerCase().includes('approver') || 
-                       currentUser.role.toLowerCase().includes('head') || 
-                       currentUser.role.toLowerCase().includes('admin')
-                     ));
 
   return (
     <div className="space-y-6 font-['Sarabun',sans-serif]">
@@ -182,13 +165,6 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
             <span>📲 ยื่นใบแจ้งซ่อมเรียบร้อยแล้ว (รายการซ่อมล่าสุดอยู่ด้านบนสุด)</span>
           </div>
           <span className="bg-white text-emerald-800 px-3 py-1 rounded-xl text-[11px]">LINE OA Live Feed</span>
-        </div>
-      )}
-
-      {successToast && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center space-x-2 shadow-lg animate-in fade-in slide-in-from-top-2">
-          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span>{successToast}</span>
         </div>
       )}
 
@@ -459,22 +435,31 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
                 
                 {/* Step 1 -> Step 2: Waiting for Department Head Approval */}
                 {(!rep.departmentHeadApproved && (rep.status === 'รอหัวหน้าอนุมัติ' || rep.status === 'รอตรวจสอบ' || rep.status === 'รอรับเรื่อง')) && (
-                  currentUser.role === 'Department Head' || currentUser.role === 'Super Admin' ? (
+                  roleFlags.isDepartmentHead || roleFlags.isAdmin ? (
                     <button
                       onClick={() => {
+                        const signerPos = currentUser.position || rep.headPosition || 'หัวหน้าฝ่าย/หัวหน้ากลุ่มงาน';
+                        const opinion = rep.headOpinion || 'เห็นควรอนุมัติให้ดำเนินการซ่อมบำรุงตามเสนอ';
                         updateRepairRequest(rep.id, {
                           departmentHeadApproved: true,
                           departmentHeadApprovedBy: currentUser.name,
                           departmentHeadApprovedAt: new Date().toISOString(),
+                          headPosition: signerPos,
+                          headOpinion: opinion,
+                          memoData: {
+                            ...(rep.memoData || {}),
+                            headSign: currentUser.name,
+                            headName: currentUser.name,
+                            headPosition: signerPos,
+                            headOpinion: opinion
+                          },
                           status: 'รอพัสดุอนุมัติ'
                         });
-                        setSuccessToast(`✅ (หัวหน้ากลุ่มงาน) อนุมัติการแจ้งซ่อม ${rep.repairNo} เรียบร้อย -> ส่งเรื่องต่อให้หัวหน้าพัสดุ (Supply Officer)`);
-                        setTimeout(() => setSuccessToast(null), 5000);
                       }}
                       className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-lg shadow-blue-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer animate-pulse"
                     >
                       <CheckCircle2 className="w-4.5 h-4.5" />
-                      <span>✍️ กดอนุมัติซ่อม (ในฐานะหัวหน้ากลุ่มงาน)</span>
+                      <span>✍️ กดอนุมัติซ่อม (หัวหน้ากลุ่มงาน: {currentUser.name})</span>
                     </button>
                   ) : (
                     <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-center text-xs font-bold space-y-1">
@@ -486,22 +471,26 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
 
                 {/* Step 2 -> Step 3: Waiting for Supply Officer Approval */}
                 {(rep.departmentHeadApproved && !rep.supplyOfficerApproved && (rep.status === 'รอพัสดุอนุมัติ' || rep.status === 'รอหัวหน้าอนุมัติ' || rep.status === 'รอตรวจสอบ')) && (
-                  currentUser.role === 'Supply Officer' || currentUser.role === 'Super Admin' ? (
+                  roleFlags.isSupplyOfficer || roleFlags.isAdmin ? (
                     <button
                       onClick={() => {
                         updateRepairRequest(rep.id, {
                           supplyOfficerApproved: true,
                           supplyOfficerApprovedBy: currentUser.name,
                           supplyOfficerApprovedAt: new Date().toISOString(),
+                          supplyPosition: currentUser.position || 'หัวหน้าเจ้าหน้าที่พัสดุ',
+                          memoData: {
+                            ...(rep.memoData || {}),
+                            procureSign: currentUser.name,
+                            procureName: currentUser.name
+                          },
                           status: 'รอผู้อำนวยการอนุมัติ'
                         });
-                        setSuccessToast(`✅ (หัวหน้าพัสดุ) อนุมัติการแจ้งซ่อม ${rep.repairNo} เรียบร้อย -> เสนอเรื่องต่อผู้อำนวยการโรงพยาบาล (Approver)`);
-                        setTimeout(() => setSuccessToast(null), 5000);
                       }}
                       className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer animate-pulse"
                     >
                       <CheckCircle2 className="w-4.5 h-4.5" />
-                      <span>📦 กดอนุมัติซ่อม (ในฐานะหัวหน้าเจ้าหน้าที่พัสดุ)</span>
+                      <span>📦 กดอนุมัติซ่อม (หัวหน้าเจ้าหน้าที่พัสดุ: {currentUser.name})</span>
                     </button>
                   ) : (
                     <div className="p-3 bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-xl text-center text-xs font-bold space-y-1">
@@ -513,7 +502,7 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
 
                 {/* Step 3 -> Step 4: Waiting for Hospital Director (Approver) Approval */}
                 {(rep.supplyOfficerApproved && !rep.directorApproved && (rep.status === 'รอผู้อำนวยการอนุมัติ' || rep.status === 'รอพัสดุอนุมัติ' || rep.status === 'รอตรวจสอบ')) && (
-                  currentUser.role === 'Approver' || currentUser.role === 'Super Admin' ? (
+                  roleFlags.isApprover || roleFlags.isAdmin ? (
                     <button
                       onClick={() => {
                         updateRepairRequest(rep.id, {
@@ -522,8 +511,6 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
                           directorApprovedAt: new Date().toISOString(),
                           status: 'รอดำเนินการ'
                         });
-                        setSuccessToast(`✅ (ผู้อำนวยการ) อนุมัติการแจ้งซ่อม ${rep.repairNo} เรียบร้อย -> ส่งแจ้งเตือนไปยังช่าง/หน่วยงานซ่อมบำรุง`);
-                        setTimeout(() => setSuccessToast(null), 5000);
                       }}
                       className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer animate-pulse"
                     >
@@ -577,8 +564,6 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
                               maintCompletedAt: new Date().toISOString(),
                               completedDate: new Date().toISOString()
                             });
-                            setSuccessToast(`🛠️ บันทึกแจ้งซ่อมเสร็จเรียบร้อย! ระบบส่งแจ้งเตือนไปให้ผู้แจ้งซ่อมกดรับของแล้ว`);
-                            setTimeout(() => setSuccessToast(null), 5000);
                           }}
                           className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer flex items-center justify-center space-x-1"
                         >
@@ -592,7 +577,7 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
 
                 {/* Step 6: Requesting Department Confirm Item Receipt */}
                 {(rep.status === 'รอหน่วยงานรับของ' || (rep.status === 'ซ่อมเสร็จ' && !rep.itemReceived)) && (
-                  (currentUser.id === rep.reporterId || currentUser.departmentId === rep.departmentId || currentUser.role === 'Super Admin' || currentUser.role === 'General User') ? (
+                  (currentUser.id === rep.reporterId || currentUser.departmentId === rep.departmentId || roleFlags.isAdmin || currentUser.role === 'General User') ? (
                     <button
                       onClick={() => {
                         updateRepairRequest(rep.id, {
@@ -601,8 +586,6 @@ export const LineOARepairNotifier: React.FC<LineOARepairNotifierProps> = ({ high
                           itemReceivedAt: new Date().toISOString(),
                           status: 'รับของเรียบร้อย'
                         });
-                        setSuccessToast(`📦 ยืนยันการรับพัสดุ/ครุภัณฑ์คืนเรียบร้อยแล้ว โดย ${currentUser.name} (ปิดงานสมบูรณ์)`);
-                        setTimeout(() => setSuccessToast(null), 5000);
                       }}
                       className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2 transition-all cursor-pointer animate-pulse"
                     >

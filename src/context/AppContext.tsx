@@ -58,6 +58,7 @@ import {
   clearOperationalDataInSupabase
 } from '../utils/supabaseService';
 import { checkSupabaseConnection } from '../utils/supabaseClient';
+import { showSwalToast, showSwalAlert, confirmSwal } from '../utils/swal';
 
 interface AppContextType {
   supabaseStatus: 'connecting' | 'connected' | 'offline';
@@ -144,7 +145,7 @@ interface AppContextType {
   updateSettings: (newSettings: Partial<SystemSettings>) => void;
   saveSettingsToSupabase: (newSettings: Partial<SystemSettings>) => Promise<{ success: boolean; data?: any; error?: any }>;
   clearOperationalData: () => Promise<{ success: boolean; message: string }>;
-  resetToDefaultData: () => void;
+  resetToDefaultData: () => Promise<void> | void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -451,6 +452,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString()
     };
     setNotifications(prev => [notif, ...prev]);
+    const swalIcon = type === 'danger' ? 'error' : type === 'warning' ? 'warning' : type === 'success' ? 'success' : 'info';
+    showSwalToast(swalIcon, title, message);
   };
 
   const addAsset = (assetData: Omit<Asset, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -537,7 +540,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (unitPrice !== undefined) finalUnitPrice = unitPrice;
     } else if (type === 'เบิกวัสดุ') {
       if (item.stockQty < qty) {
-        alert('จำนวนวัสดุในสต็อกไม่เพียงพอสำหรับการเบิก');
+        showSwalAlert('warning', 'สต็อกไม่เพียงพอ', 'จำนวนวัสดุในสต็อกไม่เพียงพอสำหรับการเบิก');
         return;
       }
       newQty -= qty;
@@ -622,7 +625,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addRepairRequest = (reqData: Omit<RepairRequest, 'id' | 'repairNo' | 'createdAt' | 'status' | 'totalCost'>): RepairRequest => {
     const existingActive = getActiveRepairForAsset(reqData.assetId);
     if (existingActive) {
-      alert(`⚠️ ป้องกันการส่งซ่อมซ้ำ!\nครุภัณฑ์ชิ้นนี้มีใบแจ้งซ่อมเลขที่ [${existingActive.repairNo}] ที่กำลังดำเนินการอยู่แล้ว (สถานะ: ${existingActive.status})\nไม่สามารถส่งแจ้งซ่อมซ้ำได้ จนกว่าใบแจ้งซ่อมเดิมจะถูกปิดงานหรือซ่อมเสร็จ`);
+      showSwalAlert(
+        'warning',
+        'ป้องกันการส่งซ่อมซ้ำ!',
+        `ครุภัณฑ์ชิ้นนี้มีใบแจ้งซ่อมเลขที่ [${existingActive.repairNo}] ที่กำลังดำเนินการอยู่แล้ว (สถานะ: ${existingActive.status}) ไม่สามารถส่งแจ้งซ่อมซ้ำได้ จนกว่าใบแจ้งซ่อมเดิมจะถูกปิดงานหรือซ่อมเสร็จ`
+      );
       throw new Error(`Duplicate repair request for asset: ${reqData.assetId}. Existing repair: ${existingActive.repairNo}`);
     }
 
@@ -843,7 +850,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteRole = (roleToDelete: string) => {
     if (roles.length <= 1) {
-      alert('ไม่สามารถลบบทบาทสิทธิ์ทั้งหมดได้');
+      showSwalAlert('warning', 'ไม่สามารถดำเนินการได้', 'ไม่สามารถลบบทบาทสิทธิ์ทั้งหมดได้');
       return;
     }
     setRoles(prev => prev.filter(r => r !== roleToDelete));
@@ -878,7 +885,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const deleteAssetCategory = (id: string) => {
     const cat = assetCategories.find(c => c.id === id);
     if (assetCategories.length <= 1) {
-      alert('ไม่สามารถลบประเภทครุภัณฑ์ทั้งหมดได้');
+      showSwalAlert('warning', 'ไม่สามารถดำเนินการได้', 'ไม่สามารถลบประเภทครุภัณฑ์ทั้งหมดได้');
       return;
     }
     setAssetCategories(prev => prev.filter(c => c.id !== id));
@@ -903,7 +910,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteBudgetSource = (source: string) => {
     if (budgetSources.length <= 1) {
-      alert('ไม่สามารถลบแหล่งงบประมาณทั้งหมดได้');
+      showSwalAlert('warning', 'ไม่สามารถดำเนินการได้', 'ไม่สามารถลบแหล่งงบประมาณทั้งหมดได้');
       return;
     }
     setBudgetSources(prev => prev.filter(s => s !== source));
@@ -927,7 +934,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteAcquisitionMethod = (method: string) => {
     if (acquisitionMethods.length <= 1) {
-      alert('ไม่สามารถลบวิธีการได้มาทั้งหมดได้');
+      showSwalAlert('warning', 'ไม่สามารถดำเนินการได้', 'ไม่สามารถลบวิธีการได้มาทั้งหมดได้');
       return;
     }
     setAcquisitionMethods(prev => prev.filter(m => m !== method));
@@ -951,7 +958,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteAssetStatus = (status: string) => {
     if (assetStatuses.length <= 1) {
-      alert('ไม่สามารถลบสถานะครุภัณฑ์ทั้งหมดได้');
+      showSwalAlert('warning', 'ไม่สามารถดำเนินการได้', 'ไม่สามารถลบสถานะครุภัณฑ์ทั้งหมดได้');
       return;
     }
     setAssetStatuses(prev => prev.filter(s => s !== status));
@@ -975,7 +982,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteAssetLocation = (location: string) => {
     if (assetLocations.length <= 1) {
-      alert('ไม่สามารถลบสถานที่จัดเก็บทั้งหมดได้');
+      showSwalAlert('warning', 'ไม่สามารถดำเนินการได้', 'ไม่สามารถลบสถานที่จัดเก็บทั้งหมดได้');
       return;
     }
     setAssetLocations(prev => prev.filter(l => l !== location));
@@ -1031,13 +1038,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return res;
   };
 
-  const resetToDefaultData = () => {
+  const resetToDefaultData = async () => {
     const roleClean = (currentUser?.role || '').toLowerCase().trim();
     if (roleClean !== 'admin' && !roleClean.includes('admin')) {
-      alert('⚠️ สิทธิ์ไม่เพียงพอ! ปุ่มรีเซ็ตข้อมูลสามารถใช้ได้โดยผู้ดูแลระบบ (Admin) เท่านั้น');
+      showSwalAlert('error', 'สิทธิ์ไม่เพียงพอ!', 'ปุ่มรีเซ็ตข้อมูลสามารถใช้ได้โดยผู้ดูแลระบบ (Admin) เท่านั้น');
       return;
     }
-    if (window.confirm('คุณต้องการรีเซ็ตข้อมูลทั้งหมดกลับเป็นค่าเริ่มต้นหรือไม่?')) {
+    const confirmed = await confirmSwal(
+      'ยืนยันรีเซ็ตข้อมูลระบบ?',
+      'คุณต้องการรีเซ็ตข้อมูลทั้งหมดกลับเป็นค่าเริ่มต้นหรือไม่?',
+      'รีเซ็ตข้อมูล',
+      'ยกเลิก',
+      'warning'
+    );
+    if (confirmed) {
       localStorage.clear();
       sessionStorage.clear();
       window.location.reload();

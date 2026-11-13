@@ -218,6 +218,9 @@ export interface RepairRequest {
   itemReceivedBy?: string;
   itemReceivedAt?: string;
 
+  // Editable official memo data persisted per request
+  memoData?: Record<string, any>;
+
   createdAt: string;
 }
 

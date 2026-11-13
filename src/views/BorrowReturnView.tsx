@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { ArrowLeftRight, Plus, CheckCircle, Clock } from 'lucide-react';
+import { showSwalAlert, showSwalToast } from '../utils/swal';
 
 export const BorrowReturnView: React.FC = () => {
   const { borrowRequests, assets, departments, addBorrowRequest, updateBorrowStatus, currentUser } = useApp();
@@ -18,13 +19,14 @@ export const BorrowReturnView: React.FC = () => {
   const handleCreateBorrow = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.purpose) {
-      alert('กรุณาระบุวัตถุประสงค์การยืม');
+      showSwalAlert('warning', 'ข้อมูลไม่ครบถ้วน', 'กรุณาระบุวัตถุประสงค์การยืม');
       return;
     }
     addBorrowRequest({
       ...formData,
       userId: currentUser.id
     });
+    showSwalToast('success', 'สร้างคำขอยืมครุภัณฑ์สำเร็จ');
     setShowAddModal(false);
   };
 
