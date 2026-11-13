@@ -188,7 +188,7 @@ export const LoginModal: React.FC = () => {
                       setUsername(e.target.value);
                       setError('');
                     }}
-                    placeholder="กรอกชื่อผู้ใช้งาน (เช่น user หรือ admin)"
+                    placeholder="กรอกชื่อผู้ใช้งาน"
                     className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/70 text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 transition-all font-medium"
                   />
                 </div>
