@@ -119,7 +119,7 @@ export const SettingsView: React.FC = () => {
   const [editDeptData, setEditDeptData] = useState<Department | null>(null);
 
   // New User form
-  const [newUser, setNewUser] = useState({ name: '', email: '', password: 'password123', role: (roles[0] || 'General User') as UserRole, departmentId: departments[0]?.id || '', position: '', phone: '', status: 'Active' as const });
+  const [newUser, setNewUser] = useState({ name: '', username: '', email: '', password: '', role: (roles[0] || 'General User') as UserRole, departmentId: departments[0]?.id || '', position: '', phone: '', status: 'Active' as const });
   const [showAddUserModal, setShowAddUserModal] = useState(false);
 
   // Edit User modal state
@@ -198,15 +198,54 @@ export const SettingsView: React.FC = () => {
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
-    addUser(newUser);
+    const cleanUsername = newUser.username.trim();
+    if (!cleanUsername) {
+      alert('กรุณาระบุชื่อผู้ใช้ (User)');
+      return;
+    }
+    const isDuplicate = users.some(
+      u => (u.username || u.email?.split('@')[0] || '').toLowerCase() === cleanUsername.toLowerCase()
+    );
+    if (isDuplicate) {
+      alert(`ชื่อผู้ใช้ "${cleanUsername}" มีอยู่ในระบบแล้ว กรุณาใช้ชื่อผู้ใช้อื่น`);
+      return;
+    }
+    const derivedEmail = cleanUsername.includes('@') ? cleanUsername : `${cleanUsername}@hospital.go.th`;
+    addUser({
+      ...newUser,
+      name: newUser.name.trim(),
+      username: cleanUsername,
+      email: derivedEmail,
+      departmentId: newUser.departmentId || departments[0]?.id || '',
+      position: newUser.position.trim(),
+      password: newUser.password || '123456'
+    });
     setShowAddUserModal(false);
-    setNewUser({ name: '', email: '', password: 'password123', role: 'General User', departmentId: departments[0]?.id || '', position: '', phone: '', status: 'Active' });
+    setNewUser({ name: '', username: '', email: '', password: '', role: (roles[0] || 'General User') as UserRole, departmentId: departments[0]?.id || '', position: '', phone: '', status: 'Active' });
   };
 
   const handleUpdateUserSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editUserData) return;
-    updateUser(editUserData.id, editUserData);
+    const cleanUsername = (editUserData.username || editUserData.email?.split('@')[0] || '').trim();
+    if (!cleanUsername) {
+      alert('กรุณาระบุชื่อผู้ใช้ (User)');
+      return;
+    }
+    const isDuplicate = users.some(
+      u => u.id !== editUserData.id && (u.username || u.email?.split('@')[0] || '').toLowerCase() === cleanUsername.toLowerCase()
+    );
+    if (isDuplicate) {
+      alert(`ชื่อผู้ใช้ "${cleanUsername}" มีอยู่ในระบบแล้ว กรุณาใช้ชื่อผู้ใช้อื่น`);
+      return;
+    }
+    const derivedEmail = cleanUsername.includes('@') ? cleanUsername : `${cleanUsername}@hospital.go.th`;
+    updateUser(editUserData.id, {
+      ...editUserData,
+      name: editUserData.name.trim(),
+      username: cleanUsername,
+      email: derivedEmail
+    });
     setEditUserData(null);
   };
 
@@ -870,7 +909,7 @@ export const SettingsView: React.FC = () => {
                 <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
                   <tr>
                     <th className="p-4">ชื่อ - นามสกุล</th>
-                    <th className="p-4">อีเมล</th>
+                    <th className="p-4">ชื่อผู้ใช้ (User)</th>
                     <th className="p-4">บทบาท (Role)</th>
                     <th className="p-4">ตำแหน่ง</th>
                     <th className="p-4 text-center">สถานะ</th>
@@ -878,10 +917,12 @@ export const SettingsView: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {users.map(u => (
+                  {users.map(u => {
+                    const displayUsername = u.username || u.email?.split('@')[0] || '-';
+                    return (
                     <tr key={u.id} className="hover:bg-slate-50">
                       <td className="p-4 font-bold text-slate-900">{u.name}</td>
-                      <td className="p-4 text-slate-600">{u.email}</td>
+                      <td className="p-4 text-slate-700 font-mono font-semibold">{displayUsername}</td>
                       <td className="p-4">
                         <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-[10px]">
                           {u.role}
@@ -895,8 +936,9 @@ export const SettingsView: React.FC = () => {
                         <td className="p-4 text-center">
                           <div className="flex items-center justify-center space-x-1.5">
                             <button
-                              onClick={() => setEditUserData(u)}
-                              className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100"
+                              type="button"
+                              onClick={() => setEditUserData({ ...u, username: u.username || u.email?.split('@')[0] || '' })}
+                              className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 cursor-pointer"
                               title="แก้ไขข้อมูลผู้ใช้"
                             >
                               <Edit className="w-4 h-4" />
@@ -930,7 +972,8 @@ export const SettingsView: React.FC = () => {
                         </td>
                       )}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1973,36 +2016,52 @@ export const SettingsView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">อีเมล</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">ชื่อผู้ใช้ (User)</label>
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                  placeholder="เช่น somchai หรือ nurse01"
+                  value={newUser.username}
+                  onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">รหัสผ่านเริ่มต้น</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">รหัสผ่าน</label>
                 <input
                   type="password"
                   required
+                  placeholder="กำหนดรหัสผ่านสำหรับเข้าสู่ระบบ"
                   value={newUser.password}
                   onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">บทบาทสิทธิ์ (Role)</label>
-                <select
-                  value={newUser.role}
-                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value as UserRole })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
-                >
-                  {roles.map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">บทบาทสิทธิ์ (Role)</label>
+                  <select
+                    value={newUser.role}
+                    onChange={(e) => setNewUser({ ...newUser, role: e.target.value as UserRole })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                  >
+                    {roles.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">หน่วยงาน</label>
+                  <select
+                    value={newUser.departmentId}
+                    onChange={(e) => setNewUser({ ...newUser, departmentId: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                  >
+                    {departments.map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">ตำแหน่ง</label>
@@ -2017,13 +2076,13 @@ export const SettingsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddUserModal(false)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer"
                 >
                   บันทึกผู้ใช้
                 </button>
@@ -2039,7 +2098,7 @@ export const SettingsView: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-4">
               <h3 className="text-base font-bold text-slate-900">แก้ไขข้อมูลผู้ใช้งาน: {editUserData.name}</h3>
-              <button onClick={() => setEditUserData(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+              <button type="button" onClick={() => setEditUserData(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">&times;</button>
             </div>
             <form onSubmit={handleUpdateUserSubmit} className="space-y-4">
               <div>
@@ -2053,26 +2112,41 @@ export const SettingsView: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">อีเมล</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">ชื่อผู้ใช้ (User)</label>
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={editUserData.email}
-                  onChange={(e) => setEditUserData({ ...editUserData, email: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                  placeholder="เช่น somchai หรือ nurse01"
+                  value={editUserData.username ?? editUserData.email?.split('@')[0] ?? ''}
+                  onChange={(e) => setEditUserData({ ...editUserData, username: e.target.value })}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden focus:ring-2 focus:ring-blue-500 font-mono"
                 />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">บทบาทสิทธิ์ (Role)</label>
-                <select
-                  value={editUserData.role}
-                  onChange={(e) => setEditUserData({ ...editUserData, role: e.target.value as UserRole })}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
-                >
-                  {roles.map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">บทบาทสิทธิ์ (Role)</label>
+                  <select
+                    value={editUserData.role}
+                    onChange={(e) => setEditUserData({ ...editUserData, role: e.target.value as UserRole })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                  >
+                    {roles.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">หน่วยงาน</label>
+                  <select
+                    value={editUserData.departmentId}
+                    onChange={(e) => setEditUserData({ ...editUserData, departmentId: e.target.value })}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 outline-hidden"
+                  >
+                    {departments.map(d => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">ตำแหน่ง</label>
@@ -2087,13 +2161,13 @@ export const SettingsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setEditUserData(null)}
-                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
                 >
                   ยกเลิก
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer"
                 >
                   บันทึกการแก้ไข
                 </button>
@@ -2112,11 +2186,11 @@ export const SettingsView: React.FC = () => {
                 <KeyRound className="w-5 h-5 text-amber-600" />
                 <h3 className="text-base font-bold text-slate-900">เปลี่ยนรหัสผ่าน</h3>
               </div>
-              <button onClick={() => setEditPasswordOnlyUser(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">&times;</button>
+              <button type="button" onClick={() => setEditPasswordOnlyUser(null)} className="text-slate-400 hover:text-slate-600 font-bold text-lg cursor-pointer">&times;</button>
             </div>
             <form onSubmit={handleChangePasswordSubmit} className="space-y-4">
               <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                ผู้ใช้งาน: <span className="font-bold text-slate-800">{editPasswordOnlyUser.name}</span> ({editPasswordOnlyUser.email})
+                ผู้ใช้งาน: <span className="font-bold text-slate-800">{editPasswordOnlyUser.name}</span> ({editPasswordOnlyUser.username || editPasswordOnlyUser.email?.split('@')[0]})
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">รหัสผ่านใหม่</label>
