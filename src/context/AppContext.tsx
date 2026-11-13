@@ -66,7 +66,7 @@ interface AppContextType {
   pushAllToSupabase: () => Promise<{ success: boolean; message: string }>;
   currentUser: UserProfile;
   isLoggedIn: boolean;
-  login: (email: string, password?: string, rememberMe?: boolean) => boolean;
+  login: (email: string, password?: string) => boolean;
   logout: () => void;
   users: UserProfile[];
   roles: string[];
@@ -197,16 +197,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Restore login state if user checked "Remember Me"
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    try {
-      const remembered = localStorage.getItem('smart_asset_remember_me') === 'true';
-      const savedUser = localStorage.getItem('smart_asset_current_user');
-      return remembered && !!savedUser;
-    } catch {
-      return false;
-    }
-  });
+  // Must always require login on entry - defaults to false
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
 
   const [currentUser, setCurrentUser] = useState<UserProfile>(() => loadStorage('current_user', initialUsers[0]));
   const [users, setUsers] = useState<UserProfile[]>(() => loadStorage('users', initialUsers));
@@ -384,7 +376,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { localStorage.setItem('smart_asset_audit_logs', JSON.stringify(auditLogs)); }, [auditLogs]);
   useEffect(() => { localStorage.setItem('smart_asset_settings', JSON.stringify(settings)); }, [settings]);
 
-  const login = (userInput: string, password?: string, rememberMe = true): boolean => {
+  const login = (userInput: string, password?: string): boolean => {
     const query = userInput.trim().toLowerCase();
     if (!query) return false;
 
@@ -413,26 +405,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentUser(found);
       setActiveTab('dashboard');
       setIsLoggedIn(true);
-      try {
-        localStorage.setItem('smart_asset_current_user', JSON.stringify(found));
-        localStorage.setItem('smart_asset_remember_pref', rememberMe ? 'true' : 'false');
-        if (rememberMe) {
-          localStorage.setItem('smart_asset_remember_me', 'true');
-          localStorage.setItem('smart_asset_remember_user_id', found.id);
-          localStorage.setItem('smart_asset_remembered_username', userInput.trim());
-          localStorage.setItem(
-            'smart_asset_remembered_password',
-            btoa(unescape(encodeURIComponent(password || '')))
-          );
-        } else {
-          localStorage.removeItem('smart_asset_remember_me');
-          localStorage.removeItem('smart_asset_remember_user_id');
-          localStorage.removeItem('smart_asset_remembered_username');
-          localStorage.removeItem('smart_asset_remembered_password');
-        }
-      } catch {
-        // ignore storage errors
-      }
       return true;
     }
     return false;
@@ -443,8 +415,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveTab('dashboard');
     try {
       sessionStorage.removeItem('smart_asset_session_logged_in');
-      localStorage.removeItem('smart_asset_remember_me');
-      localStorage.removeItem('smart_asset_remember_user_id');
     } catch {
       // ignore
     }
