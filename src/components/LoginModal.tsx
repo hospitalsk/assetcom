@@ -4,10 +4,32 @@ import { User, Lock, Eye, EyeOff, ShieldCheck, QrCode, Wrench, Package, ArrowRig
 
 export const LoginModal: React.FC = () => {
   const { login, settings } = useApp();
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState(() => {
+    try {
+      return localStorage.getItem('smart_asset_remember_pref') !== 'false'
+        ? localStorage.getItem('smart_asset_remembered_username') || ''
+        : '';
+    } catch {
+      return '';
+    }
+  });
+  const [password, setPassword] = useState(() => {
+    try {
+      if (localStorage.getItem('smart_asset_remember_pref') === 'false') return '';
+      const encoded = localStorage.getItem('smart_asset_remembered_password');
+      return encoded ? decodeURIComponent(escape(atob(encoded))) : '';
+    } catch {
+      return '';
+    }
+  });
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(() => {
+    try {
+      return localStorage.getItem('smart_asset_remember_pref') !== 'false';
+    } catch {
+      return true;
+    }
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showForgotNotice, setShowForgotNotice] = useState(false);
@@ -18,7 +40,7 @@ export const LoginModal: React.FC = () => {
     setIsLoading(true);
 
     setTimeout(() => {
-      const success = login(username, password);
+      const success = login(username, password, rememberMe);
       setIsLoading(false);
       if (!success) {
         setError('ชื่อผู้ใช้งานหรือรหัสผ่านไม่ถูกต้อง กรุณาตรวจสอบอีกครั้ง');
@@ -157,6 +179,7 @@ export const LoginModal: React.FC = () => {
                   <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
                   <input
                     type="text"
+                    autoComplete="username"
                     required
                     value={username}
                     onChange={(e) => {
@@ -178,6 +201,7 @@ export const LoginModal: React.FC = () => {
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
                   <input
                     type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
                     required
                     value={password}
                     onChange={(e) => {
@@ -200,9 +224,6 @@ export const LoginModal: React.FC = () => {
                     )}
                   </button>
                 </div>
-                <div className="text-[11px] text-slate-400 flex items-center justify-between">
-                  <span>ทดสอบเข้าใช้งาน: ชื่อผู้ใช้ user หรือ admin (รหัสผ่าน 123456)</span>
-                </div>
               </div>
 
               {/* Remember me & Forgot Password */}
@@ -211,7 +232,21 @@ export const LoginModal: React.FC = () => {
                   <input
                     type="checkbox"
                     checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setRememberMe(checked);
+                      try {
+                        localStorage.setItem('smart_asset_remember_pref', checked ? 'true' : 'false');
+                        if (!checked) {
+                          localStorage.removeItem('smart_asset_remember_me');
+                          localStorage.removeItem('smart_asset_remember_user_id');
+                          localStorage.removeItem('smart_asset_remembered_username');
+                          localStorage.removeItem('smart_asset_remembered_password');
+                        }
+                      } catch {
+                        // ignore
+                      }
+                    }}
                     className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
                   />
                   <span>จดจำการเข้าสู่ระบบ</span>
@@ -246,9 +281,12 @@ export const LoginModal: React.FC = () => {
             </form>
 
             {/* Security Guarantee Footer in Card */}
-            <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 text-center">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-              <span>ระบบรักษาความปลอดภัยตามมาตรฐานข้อมูลภาครัฐ</span>
+            <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col items-center justify-center gap-1 text-[11px] text-slate-400 text-center">
+              <div className="flex items-center justify-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span>ระบบรักษาความปลอดภัยตามมาตรฐานข้อมูลภาครัฐ</span>
+              </div>
+              <span className="text-[10px] text-slate-400/80 font-medium">v1.0</span>
             </div>
           </div>
         </div>

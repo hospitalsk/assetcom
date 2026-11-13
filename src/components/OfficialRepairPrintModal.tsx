@@ -1036,11 +1036,6 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                   <div className="row" style={{ justifyContent: 'center' }}>
                     ตำแหน่ง<input type="text" readOnly={!canEditHeadFields} value={headPosition} onChange={(e) => setHeadPosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
                   </div>
-                  {!isHeadApproved && (
-                    <div className="text-[10px] text-amber-600 font-bold no-print text-center pt-1">
-                      ⏳ กำลังแสดงตัวอย่างจากบัญชีที่ล็อกอิน (กด "อนุมัติใบแจ้งซ่อมนี้" ด้านบนเพื่อยืนยันลงนาม)
-                    </div>
-                  )}
                 </>
               ) : (
                 <>
@@ -1055,9 +1050,6 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                   </div>
                   <div className="row" style={{ justifyContent: 'center' }}>
                     ตำแหน่ง..................................................
-                  </div>
-                  <div className="text-[10px] text-amber-600 font-bold no-print text-center pt-1">
-                    ⚠️ แสดงเมื่อหัวหน้ากลุ่มงาน (Department Head) อนุมัติแล้วเท่านั้น
                   </div>
                 </>
               )}
@@ -1140,7 +1132,6 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                   <div className="row" style={{ marginTop: '4px' }}>(ลงชื่อ)..................................................</div>
                   <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
                   <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ตำแหน่ง&nbsp;หัวหน้าเจ้าหน้าที่พัสดุ</div>
-                  <div className="text-[10px] text-amber-600 font-bold no-print">⚠️ รอหัวหน้าเจ้าหน้าที่พัสดุ (Supply Officer) อนุมัติ</div>
                 </div>
               )}
             </div>
@@ -1169,7 +1160,6 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                   <div className="row" style={{ marginTop: '4px' }}>&nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)..................................................</div>
                   <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
                   <div className="row">วันที่............เดือน..........................พ.ศ..............</div>
-                  <div className="text-[10px] text-amber-600 font-bold no-print">⚠️ รอช่างดำเนินการซ่อมเสร็จ</div>
                 </div>
               )}
             </div>
@@ -1195,7 +1185,6 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                   <div className="row" style={{ marginTop: '4px' }}>(ลงชื่อ)..................................................</div>
                   <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
                   <div className="row">ตำแหน่ง&nbsp;ผู้อำนวยการโรงพยาบาลสังขละบุรี</div>
-                  <div className="text-[10px] text-amber-600 font-bold no-print">⚠️ รอผู้อำนวยการพิจารณาอนุมัติ</div>
                 </div>
               )}
             </div>
@@ -1221,7 +1210,6 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                   <div className="row" style={{ marginTop: '5px' }}>&nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)..................................................</div>
                   <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
                   <div className="row">ตำแหน่ง..................................................</div>
-                  <div className="text-[10px] text-amber-600 font-bold no-print">⚠️ รอหน่วยงานผู้แจ้งซ่อมกดรับของในระบบ</div>
                 </div>
               )}
             </div>
