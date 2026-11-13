@@ -284,3 +284,58 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.send_line_broadcast(text, jsonb) TO anon, authenticated, service_role;
+
+-- ========================================================
+-- 13. Extended Columns Migration (Idempotent / Safe to Re-run)
+-- ========================================================
+ALTER TABLE public.departments
+  ADD COLUMN IF NOT EXISTS building TEXT,
+  ADD COLUMN IF NOT EXISTS floor TEXT,
+  ADD COLUMN IF NOT EXISTS head_name TEXT,
+  ADD COLUMN IF NOT EXISTS phone TEXT;
+
+ALTER TABLE public.users
+  ADD COLUMN IF NOT EXISTS username TEXT,
+  ADD COLUMN IF NOT EXISTS phone TEXT,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Active';
+
+ALTER TABLE public.assets
+  ADD COLUMN IF NOT EXISTS assigned_user_id TEXT,
+  ADD COLUMN IF NOT EXISTS image_url TEXT,
+  ADD COLUMN IF NOT EXISTS document_url TEXT;
+
+ALTER TABLE public.inventory_items
+  ADD COLUMN IF NOT EXISTS supplier TEXT,
+  ADD COLUMN IF NOT EXISTS expiry_date DATE,
+  ADD COLUMN IF NOT EXISTS notes TEXT;
+
+ALTER TABLE public.borrow_requests
+  ADD COLUMN IF NOT EXISTS approver_id TEXT,
+  ADD COLUMN IF NOT EXISTS condition_before TEXT,
+  ADD COLUMN IF NOT EXISTS condition_after TEXT,
+  ADD COLUMN IF NOT EXISTS notes TEXT;
+
+ALTER TABLE public.repair_requests
+  ADD COLUMN IF NOT EXISTS before_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS after_image_url TEXT,
+  ADD COLUMN IF NOT EXISTS department_head_approved BOOLEAN,
+  ADD COLUMN IF NOT EXISTS department_head_approved_by TEXT,
+  ADD COLUMN IF NOT EXISTS department_head_approved_at TEXT,
+  ADD COLUMN IF NOT EXISTS head_opinion TEXT,
+  ADD COLUMN IF NOT EXISTS head_position TEXT,
+  ADD COLUMN IF NOT EXISTS supply_officer_approved BOOLEAN,
+  ADD COLUMN IF NOT EXISTS supply_officer_approved_by TEXT,
+  ADD COLUMN IF NOT EXISTS supply_officer_approved_at TEXT,
+  ADD COLUMN IF NOT EXISTS supply_position TEXT,
+  ADD COLUMN IF NOT EXISTS director_approved BOOLEAN,
+  ADD COLUMN IF NOT EXISTS director_approved_by TEXT,
+  ADD COLUMN IF NOT EXISTS director_approved_at TEXT,
+  ADD COLUMN IF NOT EXISTS approver_comments TEXT,
+  ADD COLUMN IF NOT EXISTS technician_approved BOOLEAN,
+  ADD COLUMN IF NOT EXISTS technician_approved_by TEXT,
+  ADD COLUMN IF NOT EXISTS maint_completed_by TEXT,
+  ADD COLUMN IF NOT EXISTS maint_completed_at TEXT,
+  ADD COLUMN IF NOT EXISTS item_received BOOLEAN,
+  ADD COLUMN IF NOT EXISTS item_received_by TEXT,
+  ADD COLUMN IF NOT EXISTS item_received_at TEXT;
+

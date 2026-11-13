@@ -42,7 +42,12 @@ import {
   deleteAssetFromSupabase, 
   syncRepairRequestToSupabase, 
   syncBorrowRequestToSupabase, 
-  syncInventoryItemToSupabase, 
+  syncInventoryItemToSupabase,
+  deleteInventoryItemFromSupabase,
+  syncInventoryTransactionToSupabase,
+  syncBudgetPlanToSupabase,
+  syncAssetCategoryToSupabase,
+  deleteAssetCategoryFromSupabase,
   syncDepartmentToSupabase,
   deleteDepartmentFromSupabase,
   syncUserToSupabase,
@@ -232,6 +237,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [supabaseStatus, setSupabaseStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
 
+  const applySupabaseData = (data: NonNullable<Awaited<ReturnType<typeof fetchAllSupabaseData>>>) => {
+    if (data.assetsOk) setAssets(data.assets);
+    if (data.repairsOk) setRepairRequests(data.repairRequests);
+    if (data.borrowsOk) setBorrowRequests(data.borrowRequests);
+    if (data.inventoryOk) setInventoryItems(data.inventoryItems);
+    if (data.transactionsOk) setInventoryTransactions(data.inventoryTransactions);
+    if (data.budgetsOk) setBudgetPlans(data.budgetPlans);
+    if (data.auditLogsOk) setAuditLogs(data.auditLogs);
+    if (data.categoriesOk && data.assetCategories.length > 0) {
+      setAssetCategories(data.assetCategories);
+    }
+    if (data.departmentsOk && data.departments.length > 0) {
+      setDepartments(prev =>
+        data.departments.map(remote => {
+          const localMatch = prev.find(p => p.id === remote.id) || initialDepartments.find(p => p.id === remote.id);
+          return {
+            ...remote,
+            building: remote.building || localMatch?.building || '',
+            floor: remote.floor || localMatch?.floor || '',
+            headName: remote.headName || localMatch?.headName || '',
+            phone: remote.phone || localMatch?.phone || ''
+          };
+        })
+      );
+    }
+    if (data.usersOk && data.users.length > 0) {
+      setUsers(prev =>
+        data.users.map(remote => {
+          const localMatch =
+            prev.find(p => p.id === remote.id || p.email === remote.email) ||
+            initialUsers.find(p => p.id === remote.id || p.email === remote.email);
+          return {
+            ...remote,
+            username: remote.username || localMatch?.username || remote.email?.split('@')[0],
+            password: remote.password || localMatch?.password,
+            phone: remote.phone || localMatch?.phone || '',
+            status: remote.status || localMatch?.status || 'Active'
+          };
+        })
+      );
+    }
+    if (data.settings) {
+      setSettings(prev => ({
+        ...prev,
+        ...data.settings,
+        logoUrl: data.settings?.logoUrl || prev.logoUrl || './assets/aistudio/Logo_SK_26693d5e.png',
+        emblemUrl: data.settings?.emblemUrl || prev.emblemUrl || './assets/aistudio/________3cm_fbf2f514.png'
+      }));
+    }
+  };
+
   // Load initial dataset from Supabase if online
   useEffect(() => {
     let isMounted = true;
@@ -242,19 +298,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSupabaseStatus('connected');
         const data = await fetchAllSupabaseData();
         if (data && isMounted) {
-          if (data.assetsOk) setAssets(data.assets);
-          if (data.repairsOk) setRepairRequests(data.repairRequests);
-          if (data.borrowsOk) setBorrowRequests(data.borrowRequests);
-          if (data.inventoryOk) setInventoryItems(data.inventoryItems);
-          if (data.departments && data.departments.length > 0) setDepartments(data.departments);
-          if (data.users && data.users.length > 0) setUsers(data.users);
-          if (data.settings) {
-            setSettings(prev => ({
-              ...prev,
-              ...data.settings,
-              emblemUrl: data.settings?.emblemUrl || prev.emblemUrl || './assets/aistudio/________3cm_fbf2f514.png'
-            }));
-          }
+          applySupabaseData(data);
         }
       } else {
         setSupabaseStatus('offline');
@@ -271,19 +315,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSupabaseStatus('connected');
       const data = await fetchAllSupabaseData();
       if (data) {
-        if (data.assetsOk) setAssets(data.assets);
-        if (data.repairsOk) setRepairRequests(data.repairRequests);
-        if (data.borrowsOk) setBorrowRequests(data.borrowRequests);
-        if (data.inventoryOk) setInventoryItems(data.inventoryItems);
-        if (data.departments && data.departments.length > 0) setDepartments(data.departments);
-        if (data.users && data.users.length > 0) setUsers(data.users);
-        if (data.settings) {
-          setSettings(prev => ({
-            ...prev,
-            ...data.settings,
-            emblemUrl: data.settings?.emblemUrl || prev.emblemUrl || './assets/aistudio/________3cm_fbf2f514.png'
-          }));
-        }
+        applySupabaseData(data);
         return true;
       }
     } else {
@@ -305,6 +337,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       repairRequests,
       borrowRequests,
       inventoryItems,
+      inventoryTransactions,
+      budgetPlans,
+      assetCategories,
       departments,
       users,
       settings
@@ -474,7 +509,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteInventoryItem = (id: string) => {
+    const target = inventoryItems.find(i => i.id === id);
     setInventoryItems(prev => prev.filter(i => i.id !== id));
+    deleteInventoryItemFromSupabase(id);
+    if (target) {
+      addAuditLog('DELETE', 'IT Inventory', id, `ลบรายการวัสดุ ${target.itemCode} - ${target.name}`);
+    }
   };
 
   const processInventoryTransaction = (
@@ -528,6 +568,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString()
     };
     setInventoryTransactions(prev => [trx, ...prev]);
+    syncInventoryTransactionToSupabase(trx);
     addAuditLog('DISPENSE', 'IT Inventory', trx.id, `${type}วัสดุ ${item.name} จำนวน ${qty} ${item.unit}`);
 
     if (type === 'เบิกวัสดุ') {
@@ -714,11 +755,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString()
     };
     setBudgetPlans(prev => [newPlan, ...prev]);
+    syncBudgetPlanToSupabase(newPlan);
     addAuditLog('CREATE', 'Budget & Planning', newPlan.id, `เพิ่มแผนงบประมาณ ${newPlan.itemName}`);
   };
 
   const updateBudgetPlan = (id: string, updatedFields: Partial<BudgetPlan>) => {
-    setBudgetPlans(prev => prev.map(b => b.id === id ? { ...b, ...updatedFields } : b));
+    setBudgetPlans(prev => prev.map(b => {
+      if (b.id === id) {
+        const updated = { ...b, ...updatedFields };
+        syncBudgetPlanToSupabase(updated);
+        return updated;
+      }
+      return b;
+    }));
   };
 
   const addDepartment = (dept: Omit<Department, 'id'>) => {
@@ -810,11 +859,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addAssetCategory = (cat: Omit<AssetCategory, 'id'>) => {
     const newCat = { ...cat, id: generateUniqueId('cat') };
     setAssetCategories(prev => [...prev, newCat]);
+    syncAssetCategoryToSupabase(newCat);
     addAuditLog('CREATE', 'Settings', newCat.id, `เพิ่มประเภทครุภัณฑ์ [${newCat.name}]`);
   };
 
   const updateAssetCategory = (id: string, cat: Partial<AssetCategory>) => {
-    setAssetCategories(prev => prev.map(c => c.id === id ? { ...c, ...cat } : c));
+    setAssetCategories(prev => prev.map(c => {
+      if (c.id === id) {
+        const updated = { ...c, ...cat };
+        syncAssetCategoryToSupabase(updated);
+        return updated;
+      }
+      return c;
+    }));
     addAuditLog('UPDATE', 'Settings', id, `แก้ไขประเภทครุภัณฑ์ [${cat.name || id}]`);
   };
 
@@ -825,6 +882,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     setAssetCategories(prev => prev.filter(c => c.id !== id));
+    deleteAssetCategoryFromSupabase(id);
     addAuditLog('DELETE', 'Settings', id, `ลบประเภทครุภัณฑ์ [${cat?.name || id}]`);
   };
 
