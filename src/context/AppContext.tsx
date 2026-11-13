@@ -846,6 +846,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers(prev => prev.map(u => {
       if (u.id === id) {
         const updated = { ...u, ...user };
+        if (currentUser.id === id) {
+          setCurrentUser(updated);
+          try {
+            if (localStorage.getItem('smart_asset_remember_pref') !== 'false') {
+              if (user.username) {
+                localStorage.setItem('smart_asset_remembered_username', user.username);
+              }
+              if (user.password) {
+                localStorage.setItem(
+                  'smart_asset_remembered_password',
+                  btoa(unescape(encodeURIComponent(user.password)))
+                );
+              }
+            }
+          } catch {
+            // ignore
+          }
+        }
         syncUserToSupabase(updated);
         addAuditLog('UPDATE', 'Settings', id, `แก้ไขผู้ใช้งาน ${updated.name}`);
         return updated;

@@ -178,6 +178,8 @@ export const LoginModal: React.FC = () => {
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
                   <input
+                    id="login-username"
+                    name="username"
                     type="text"
                     autoComplete="username"
                     required
@@ -200,6 +202,8 @@ export const LoginModal: React.FC = () => {
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
                   <input
+                    id="login-password"
+                    name="password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
                     required
@@ -237,7 +241,17 @@ export const LoginModal: React.FC = () => {
                       setRememberMe(checked);
                       try {
                         localStorage.setItem('smart_asset_remember_pref', checked ? 'true' : 'false');
-                        if (!checked) {
+                        if (checked) {
+                          if (username.trim()) {
+                            localStorage.setItem('smart_asset_remembered_username', username.trim());
+                          }
+                          if (password) {
+                            localStorage.setItem(
+                              'smart_asset_remembered_password',
+                              btoa(unescape(encodeURIComponent(password)))
+                            );
+                          }
+                        } else {
                           localStorage.removeItem('smart_asset_remember_me');
                           localStorage.removeItem('smart_asset_remember_user_id');
                           localStorage.removeItem('smart_asset_remembered_username');
