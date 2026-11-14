@@ -63,7 +63,7 @@ export const RepairManagementView: React.FC = () => {
       notes: '',
 
       // Official Memo Header (Editable by Reporter & Admin)
-      agency: `${settings.organizationName || 'โรงพยาบาลสังขละบุรี'} ฝ่ายบริหารทั่วไป ${settings.orgPhone ? `โทร. ${settings.orgPhone}` : 'โทร. ๐๓๔-๕๙๕๐๓๐ ต่อ ๒๐๕'}`,
+      agency: `${settings.organizationName || 'โรงพยาบาลสังขละบุรี'} ${curDept?.name || 'กลุ่มงานบริหารทั่วไป'} ${settings.orgPhone ? `โทร. ${settings.orgPhone}` : 'โทร. ๐๓๔-๕๙๕๐๓๐ ต่อ ๒๐๕'}`,
       docNumber: `${curNow.getFullYear() + 543}/01`,
       docDate: curDateStr,
       deptName: curDept?.name || 'กลุ่มงานบริหารทั่วไป',
@@ -623,7 +623,35 @@ export const RepairManagementView: React.FC = () => {
                         <input
                           type="text"
                           value={formData.deptName}
-                          onChange={(e) => setFormData({ ...formData, deptName: e.target.value })}
+                          onChange={(e) => {
+                            const nextDept = e.target.value;
+                            const orgName = settings.organizationName || 'โรงพยาบาลสังขละบุรี';
+                            const prevTrimmed = formData.deptName.trim();
+                            const nextTrimmed = nextDept.trim();
+                            setFormData((prev) => {
+                              const prevAgency = prev.agency;
+                              const searchStart = prevAgency.startsWith(orgName) ? orgName.length : 0;
+                              const phoneIdx = prevAgency.indexOf('โทร.', searchStart);
+                              const searchEnd = phoneIdx !== -1 ? phoneIdx : prevAgency.length;
+                              const headSeg = prevAgency.slice(0, searchStart);
+                              const midSeg = prevAgency.slice(searchStart, searchEnd);
+                              const tailSeg = prevAgency.slice(searchEnd);
+                              let updatedMid = midSeg;
+                              if (prevTrimmed && midSeg.includes(prevTrimmed)) {
+                                updatedMid = midSeg.replace(prevTrimmed, nextTrimmed);
+                              } else if (midSeg.includes('ฝ่ายบริหารทั่วไป')) {
+                                updatedMid = midSeg.replace('ฝ่ายบริหารทั่วไป', nextTrimmed);
+                              } else if (prevTrimmed === '' && nextTrimmed) {
+                                updatedMid = midSeg.trim() ? `${midSeg.trim()} ${nextTrimmed}` : nextTrimmed;
+                              } else {
+                                return { ...prev, deptName: nextDept };
+                              }
+                              const syncedAgency = [headSeg.trim(), updatedMid.trim(), tailSeg.trim()]
+                                .filter(Boolean)
+                                .join(' ');
+                              return { ...prev, deptName: nextDept, agency: syncedAgency };
+                            });
+                          }}
                           className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-300 bg-white"
                         />
                       </div>

@@ -63,8 +63,8 @@ export async function exportA4ElementToPdf(
         }
       });
 
-      // 4. Transform text inputs to inline spans in cloned document for html2canvas rendering.
-      // Native <input> rendering in html2canvas often shifts text down below the dotted border baseline.
+      // 4. Transform text inputs to wrapping block/inline spans in cloned document for html2canvas rendering.
+      // Text elements NEVER carry border-bottom directly; the separate .memo-field-line element renders the dotted line below.
       const inputs = clonedDoc.querySelectorAll('input[type="text"]');
       inputs.forEach((inputNode) => {
         const input = inputNode as HTMLInputElement;
@@ -73,28 +73,41 @@ export async function exportA4ElementToPdf(
 
         const computed = clonedDoc.defaultView?.getComputedStyle(input);
 
-        span.style.display = 'inline-block';
-        span.style.border = 'none';
-        span.style.borderBottom = '1px dotted #000000';
-        span.style.color = '#000080';
-        span.style.fontFamily = "'Sarabun', sans-serif";
-        span.style.fontSize = computed?.fontSize || '13px';
-        span.style.lineHeight = '1.2';
-        span.style.height = '1.25em';
-        span.style.padding = '0 4px 1px 4px';
-        span.style.margin = '0';
-        span.style.verticalAlign = 'baseline';
-        span.style.wordBreak = 'break-word';
-        span.style.boxSizing = 'border-box';
-        span.style.textAlign = input.style.textAlign || computed?.textAlign || 'left';
+        if (input.classList.contains('memo-input')) {
+          span.className = 'memo-static-text';
+          span.style.display = 'block';
+          span.style.width = '100%';
+          span.style.minHeight = '20px';
+          span.style.border = 'none';
+          span.style.color = '#000080';
+          span.style.fontFamily = "'Sarabun', sans-serif";
+          span.style.fontSize = computed?.fontSize || '13px';
+          span.style.lineHeight = '1.55';
+          span.style.padding = '0';
+          span.style.margin = '0';
+          span.style.whiteSpace = 'normal';
+          span.style.wordBreak = 'break-word';
+          span.style.overflowWrap = 'break-word';
+          span.style.boxSizing = 'border-box';
+          span.style.textAlign = input.style.textAlign || computed?.textAlign || 'left';
+        } else {
+          span.style.display = 'inline-block';
+          span.style.border = 'none';
+          span.style.color = '#000080';
+          span.style.fontFamily = "'Sarabun', sans-serif";
+          span.style.fontSize = computed?.fontSize || '13px';
+          span.style.lineHeight = '1.55';
+          span.style.minHeight = '20px';
+          span.style.padding = '0 4px 2px 4px';
+          span.style.margin = '0';
+          span.style.verticalAlign = 'bottom';
+          span.style.wordBreak = 'break-word';
+          span.style.boxSizing = 'border-box';
+          span.style.textAlign = input.style.textAlign || computed?.textAlign || 'left';
 
-        if (input.style.width) span.style.width = input.style.width;
-        if (input.style.maxWidth) span.style.maxWidth = input.style.maxWidth;
-        if (input.style.minWidth) span.style.minWidth = input.style.minWidth;
-        if (input.classList.contains('flex-input')) {
-          span.style.flex = computed?.flex || '1';
-          span.style.flexGrow = '1';
-          span.style.margin = '0 5px';
+          if (input.style.width) span.style.width = input.style.width;
+          if (input.style.maxWidth) span.style.maxWidth = input.style.maxWidth;
+          if (input.style.minWidth) span.style.minWidth = input.style.minWidth;
         }
 
         input.parentNode?.replaceChild(span, input);

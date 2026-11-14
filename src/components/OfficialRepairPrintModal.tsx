@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { RepairRequest } from '../types';
 import { Printer, X, Download, CheckCircle, ShieldCheck, Save } from 'lucide-react';
-import { exportA4ElementToPdf } from '../utils/pdfExport';
 import { getUserRoleFlags } from '../utils/permissions';
 import { showSwalAlert, showSwalToast } from '../utils/swal';
 
@@ -10,6 +9,63 @@ interface OfficialRepairPrintModalProps {
   repairRequest: RepairRequest;
   onClose: () => void;
 }
+
+interface MemoFieldProps {
+  value?: string;
+  onChange?: (value: string) => void;
+  readOnly?: boolean;
+  width?: string;
+  maxWidth?: string;
+  minWidth?: string;
+  flexGrow?: boolean;
+  align?: 'left' | 'center' | 'right';
+  inputStyle?: React.CSSProperties;
+}
+
+const MemoField: React.FC<MemoFieldProps> = ({
+  value = '',
+  onChange,
+  readOnly = false,
+  width,
+  maxWidth,
+  minWidth,
+  flexGrow = false,
+  align = 'left',
+  inputStyle
+}) => {
+  return (
+    <span
+      className={`memo-field${flexGrow ? ' memo-field-flex' : ''}`}
+      style={{
+        ...(width ? { width } : {}),
+        ...(maxWidth ? { maxWidth } : {}),
+        ...(minWidth ? { minWidth } : {})
+      }}
+    >
+      <span className="memo-field-text-area">
+        {readOnly ? (
+          <span className="memo-static-text" style={{ textAlign: align }}>
+            {value || '\u00A0'}
+          </span>
+        ) : (
+          <>
+            <input
+              type="text"
+              className="memo-input screen-only-input"
+              value={value}
+              onChange={(e) => onChange?.(e.target.value)}
+              style={{ textAlign: align, ...inputStyle }}
+            />
+            <span className="memo-static-text print-only-text" style={{ textAlign: align }}>
+              {value || '\u00A0'}
+            </span>
+          </>
+        )}
+      </span>
+      <span className="memo-field-line" aria-hidden="true" />
+    </span>
+  );
+};
 
 export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> = ({
   repairRequest,
@@ -54,10 +110,61 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
     ? `${reqDate.getDate()} ${thaiMonths[reqDate.getMonth()]} ${reqDate.getFullYear() + 543}`
     : (repairRequest.sentDate || repairRequest.createdAt || '');
 
-  const defaultAgency = `${settings.organizationName || 'โรงพยาบาลสังขละบุรี'} ฝ่ายบริหารทั่วไป ${settings.orgPhone ? `โทร. ${settings.orgPhone}` : 'โทร. ๐๓๔-๕๙๕๐๓๐ ต่อ ๒๐๕'}`;
+  const orgName = settings.organizationName || 'โรงพยาบาลสังขละบุรี';
+  const orgPhoneText = settings.orgPhone ? `โทร. ${settings.orgPhone}` : 'โทร. ๐๓๔-๕๙๕๐๓๐ ต่อ ๒๐๕';
+  const initialDeptName = savedMemo.deptName || dept?.name || 'กลุ่มงานทั่วไป';
+
+  const buildAgencyText = (deptText: string) =>
+    `${orgName} ${deptText.trim() || 'ฝ่ายบริหารทั่วไป'} ${orgPhoneText}`.replace(/\s{2,}/g, ' ').trim();
+
+  const syncAgencyWithDept = (
+    prevAgency: string,
+    prevDept: string,
+    nextDept: string
+  ): string => {
+    const prevTrimmed = prevDept.trim();
+    const nextTrimmed = nextDept.trim();
+    const searchStart = prevAgency.startsWith(orgName) ? orgName.length : 0;
+    const phoneIdx = prevAgency.indexOf('โทร.', searchStart);
+    const searchEnd = phoneIdx !== -1 ? phoneIdx : prevAgency.length;
+    const headSegment = prevAgency.slice(0, searchStart);
+    const middleSegment = prevAgency.slice(searchStart, searchEnd);
+    const tailSegment = prevAgency.slice(searchEnd);
+
+    let updatedMiddle = middleSegment;
+    if (prevTrimmed && middleSegment.includes(prevTrimmed)) {
+      updatedMiddle = middleSegment.replace(prevTrimmed, nextTrimmed);
+    } else if (middleSegment.includes('ฝ่ายบริหารทั่วไป')) {
+      updatedMiddle = middleSegment.replace('ฝ่ายบริหารทั่วไป', nextTrimmed);
+    } else if (prevTrimmed === '' && nextTrimmed) {
+      updatedMiddle = middleSegment.trim()
+        ? `${middleSegment.trim()} ${nextTrimmed}`
+        : nextTrimmed;
+    } else {
+      return prevAgency;
+    }
+
+    return [headSegment.trim(), updatedMiddle.trim(), tailSegment.trim()]
+      .filter(Boolean)
+      .join(' ');
+  };
+
+  const initialAgency: string = (() => {
+    if (!savedMemo.agency) {
+      return buildAgencyText(initialDeptName);
+    }
+    if (
+      savedMemo.agency.includes('ฝ่ายบริหารทั่วไป') &&
+      initialDeptName.trim() &&
+      initialDeptName.trim() !== 'ฝ่ายบริหารทั่วไป'
+    ) {
+      return syncAgencyWithDept(savedMemo.agency, 'ฝ่ายบริหารทั่วไป', initialDeptName);
+    }
+    return String(savedMemo.agency);
+  })();
 
   // Interactive Form State for ALL input fields in the official document
-  const [govAgency, setGovAgency] = useState(savedMemo.agency || defaultAgency);
+  const [govAgency, setGovAgency] = useState<string>(initialAgency);
   const [docNoSub, setDocNoSub] = useState(savedMemo.docNumber || (repairRequest.repairNo ? repairRequest.repairNo.replace('REP-', '') : '2568/01'));
   const [docDate, setDocDate] = useState(savedMemo.docDate || thaiDateStr);
 
@@ -65,7 +172,13 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
     setDocDate(repairRequest.memoData?.docDate || thaiDateStr);
   }, [repairRequest.id, repairRequest.sentDate, repairRequest.createdAt, thaiDateStr]);
 
-  const [deptName, setDeptName] = useState(savedMemo.deptName || dept?.name || 'กลุ่มงานทั่วไป');
+  const [deptName, setDeptName] = useState<string>(initialDeptName);
+
+  const handleDeptNameChange = (nextDept: string) => {
+    const prevDept = deptName;
+    setDeptName(nextDept);
+    setGovAgency((prevAgency: string) => syncAgencyWithDept(prevAgency, prevDept, nextDept));
+  };
   const [category, setCategory] = useState<'การแพทย์' | 'สำนักงาน' | 'ยานพาหนะ' | 'อาคาร' | 'สิ่งก่อสร้าง' | 'งานบ้านงานครัว' | 'อุปกรณ์และอื่นๆ'>(
     savedMemo.category || 'สำนักงาน'
   );
@@ -178,8 +291,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
   const [receiveFullName, setReceiveFullName] = useState(savedMemo.receiveName || repairRequest.itemReceivedBy || reporter.name);
   const [receivePosition, setReceivePosition] = useState(savedMemo.receivePosition || reporter.position || 'เจ้าหน้าที่ผู้รับของ');
 
-  const [isSavingPdf, setIsSavingPdf] = useState(false);
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [printModeActive, setPrintModeActive] = useState<'pdf' | 'print' | null>(null);
 
   const buildAuthorizedMemoUpdates = (): Partial<RepairRequest> => {
     const nextMemo: Record<string, any> = { ...(repairRequest.memoData || {}) };
@@ -262,63 +374,29 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
     }
   };
 
-  const handleSavePdf = async () => {
+  const triggerHtmlCssPrint = async (mode: 'pdf' | 'print') => {
     if (!printRef.current) return;
-    try {
-      setIsSavingPdf(true);
-      handleSaveMemoForm(false);
-      const filename = `บันทึกข้อความขออนุมัติซ่อมบำรุง_${docNoSub.replace(/[\/\\]/g, '-')}.pdf`;
-      await exportA4ElementToPdf(printRef.current, filename);
-      showSwalToast('success', 'บันทึกไฟล์ PDF 1 หน้า A4 สำเร็จ');
-    } catch (err) {
-      console.error('Save PDF error:', err);
-      showSwalAlert('error', 'ไม่สามารถบันทึก PDF ได้', 'กรุณาลองใหม่อีกครั้ง');
-    } finally {
-      setIsSavingPdf(false);
-    }
-  };
-
-  const handlePrint = async () => {
-    if (!printRef.current) return;
-    setIsPrinting(true);
+    setPrintModeActive(mode);
     handleSaveMemoForm(false);
+
+    const safeDocTitle = `บันทึกข้อความขออนุมัติซ่อมบำรุง_${docNoSub.replace(/[\/\\]/g, '-')}`;
+    const originalTitle = document.title;
 
     try {
       const sourceEl = printRef.current;
       const clone = sourceEl.cloneNode(true) as HTMLElement;
 
-      // Sync text inputs -> crisp baseline spans so printed dotted lines align perfectly
-      const origInputs = Array.from(sourceEl.querySelectorAll('input[type="text"]')) as HTMLInputElement[];
-      const cloneInputs = Array.from(clone.querySelectorAll('input[type="text"]')) as HTMLInputElement[];
-      cloneInputs.forEach((cloneInput, idx) => {
-        const origInput = origInputs[idx];
-        const span = document.createElement('span');
-        span.textContent = origInput?.value || '\u00A0';
+      // Remove interactive screen-only <input type="text"> from print clone so only .memo-static-text renders cleanly
+      const cloneScreenInputs = Array.from(clone.querySelectorAll('.screen-only-input'));
+      cloneScreenInputs.forEach((inputEl) => {
+        inputEl.parentNode?.removeChild(inputEl);
+      });
 
-        const computed = window.getComputedStyle(origInput || cloneInput);
-        span.style.display = 'inline-block';
-        span.style.border = 'none';
-        span.style.borderBottom = '1px dotted #000000';
-        span.style.color = '#000000';
-        span.style.fontFamily = "'Sarabun', sans-serif";
-        span.style.fontSize = computed?.fontSize || '13px';
-        span.style.lineHeight = '1.2';
-        span.style.height = '1.25em';
-        span.style.padding = '0 4px 1px 4px';
-        span.style.margin = '0';
-        span.style.verticalAlign = 'baseline';
-        span.style.boxSizing = 'border-box';
-        span.style.textAlign = cloneInput.style.textAlign || computed?.textAlign || 'left';
-
-        if (cloneInput.style.width) span.style.width = cloneInput.style.width;
-        if (cloneInput.style.maxWidth) span.style.maxWidth = cloneInput.style.maxWidth;
-        if (cloneInput.style.minWidth) span.style.minWidth = cloneInput.style.minWidth;
-        if (cloneInput.classList.contains('flex-input')) {
-          span.style.flexGrow = '1';
-          span.style.margin = '0 5px';
-        }
-
-        cloneInput.parentNode?.replaceChild(span, cloneInput);
+      const clonePrintOnlyTexts = Array.from(clone.querySelectorAll('.print-only-text')) as HTMLElement[];
+      clonePrintOnlyTexts.forEach((el) => {
+        el.classList.remove('print-only-text');
+        el.style.display = 'block';
+        el.style.color = '#000000';
       });
 
       // Sync radio & checkbox checked states
@@ -361,7 +439,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
 <html lang="th">
 <head>
   <meta charset="UTF-8" />
-  <title>บันทึกข้อความขออนุมัติซ่อมบำรุง_${docNoSub.replace(/[\/\\]/g, '-')}</title>
+  <title>${safeDocTitle}</title>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;700&display=swap" rel="stylesheet" />
   <style>
     * { box-sizing: border-box; }
@@ -371,7 +449,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
       padding: 0;
       background: #ffffff;
       font-family: 'Sarabun', sans-serif;
-      font-size: 13px;
+      font-size: 12.5px;
       color: #000000;
       width: 210mm;
       height: 297mm;
@@ -387,48 +465,142 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
       padding: 8mm 16mm 6mm 16mm;
       background: #ffffff;
       position: relative;
-      line-height: 1.35;
+      line-height: 1.55;
       display: flex;
       flex-direction: column;
       overflow: hidden;
       font-family: 'Sarabun', sans-serif;
-      font-size: 13px;
+      font-size: 12.5px;
       color: #000000;
       margin: 0 auto;
     }
     .header-title {
       font-size: 15pt;
       font-weight: bold;
-      margin-bottom: 3px;
+      margin-bottom: 2px;
       margin-top: 2px;
+      line-height: 1.4;
     }
-    .row {
+    .row, .memo-row {
       display: flex;
-      align-items: baseline;
-      margin-bottom: 4px;
+      align-items: flex-end;
+      gap: 4px;
+      margin-bottom: 2px;
       width: 100%;
       max-width: 100%;
+      line-height: 1.55;
+    }
+    .memo-label {
+      flex-shrink: 0;
+      line-height: 1.55;
+      padding-bottom: 2px;
+    }
+    .memo-field {
+      display: inline-flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      min-height: 21px;
+      flex-shrink: 0;
+      box-sizing: border-box;
+    }
+    .memo-field-flex {
+      flex: 1 1 0%;
+      min-width: 36px;
+    }
+    .memo-field-text-area {
+      display: block;
+      width: 100%;
+      min-height: 19px;
+      line-height: 1.55;
+      padding: 0 4px 2px 4px;
+      box-sizing: border-box;
+    }
+    .memo-static-text {
+      display: block;
+      width: 100%;
+      min-height: 19px;
+      border: none !important;
+      font-family: 'Sarabun', sans-serif;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: #000000;
+      white-space: normal;
+      word-break: break-word;
+      overflow-wrap: break-word;
+      padding: 0;
+      margin: 0;
+    }
+    .memo-field-line {
+      display: block;
+      width: 100%;
+      height: 1px;
+      border-bottom: 1px dotted #000000;
+      flex-shrink: 0;
+    }
+    .memo-grid-2-header {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      width: 100%;
+    }
+    .memo-grid-item-1 {
+      display: grid;
+      grid-template-columns: 1.75fr 1fr;
+      gap: 8px;
+      width: 100%;
+    }
+    .memo-grid-item-2 {
+      display: grid;
+      grid-template-columns: 1.25fr 1fr;
+      gap: 8px;
+      width: 100%;
+    }
+    .memo-grid-item-3 {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr 0.8fr;
+      gap: 8px;
+      width: 100%;
     }
     .bold { font-weight: bold; }
     .text-center { text-align: center; }
     .indent { padding-left: 2.5cm; }
-    .flex-input { flex-grow: 1; margin: 0 5px; }
     .checkbox-label {
       display: inline-flex;
       align-items: center;
+      gap: 4px;
       margin-right: 5px;
+      line-height: 1.55;
     }
-    .checkbox-label input { margin-right: 3px; }
+    .checkbox-label input { margin: 0; }
     .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 15px;
-      margin-top: 4px;
+      gap: 14px;
+      margin-top: 3px;
+      width: 100%;
     }
     .signature-box {
       display: flex;
       flex-direction: column;
       align-items: center;
+      gap: 1px;
+    }
+    .memo-sign-col {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 1px;
+    }
+    .memo-sign-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      width: 100%;
+      margin-bottom: 2px;
+      line-height: 1.55;
+    }
+    .memo-sign-row-center {
+      justify-content: center;
     }
     hr { border: 0.5px solid #000; margin: 4px 0; }
   </style>
@@ -457,10 +629,43 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
       const frameDoc = printFrame.contentWindow?.document || printFrame.contentDocument;
       const frameWin = printFrame.contentWindow;
 
+      const triggerMainWindowPrint = () => {
+        document.title = safeDocTitle;
+        let mainPrintTriggered = false;
+        const onMainBeforePrint = () => {
+          mainPrintTriggered = true;
+        };
+        const restoreTitle = () => {
+          document.title = originalTitle;
+        };
+        window.addEventListener('beforeprint', onMainBeforePrint, { once: true });
+        window.addEventListener('afterprint', restoreTitle, { once: true });
+
+        try {
+          window.focus();
+          window.print();
+        } catch {
+          // ignore
+        }
+
+        setTimeout(() => {
+          window.removeEventListener('beforeprint', onMainBeforePrint);
+          if (!mainPrintTriggered) {
+            restoreTitle();
+            showSwalAlert(
+              'info',
+              'ใช้การพิมพ์ของเบราว์เซอร์ (Print to PDF)',
+              'เบราว์เซอร์ในโหมด Preview นี้ปิดกั้นการเรียกหน้าต่างพิมพ์อัตโนมัติ กรุณากด Ctrl+P (หรือ Cmd+P บน Mac) แล้วเลือกปลายทางเป็น "Save as PDF / บันทึกเป็น PDF" เพื่อบันทึกเอกสาร 1 หน้า A4 แบบ Vector คมชัด'
+            );
+          } else if (mode === 'pdf') {
+            showSwalToast('info', 'เลือกปลายทาง "Save as PDF / บันทึกเป็น PDF" ในหน้าต่างพิมพ์');
+          }
+          setPrintModeActive(null);
+        }, 350);
+      };
+
       if (!frameDoc || !frameWin) {
-        window.focus();
-        window.print();
-        setIsPrinting(false);
+        triggerMainWindowPrint();
         return;
       }
 
@@ -478,7 +683,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
 
       // Wait briefly for web fonts & images inside iframe before printing
       await Promise.race([
-        (frameDoc as any).fonts?.ready || Promise.resolve(),
+        (frameDoc as unknown as { fonts?: { ready?: Promise<unknown> } }).fonts?.ready || Promise.resolve(),
         new Promise((resolve) => setTimeout(resolve, 600)),
       ]);
       await new Promise((resolve) => setTimeout(resolve, 120));
@@ -489,47 +694,31 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
       };
       frameWin.addEventListener('beforeprint', onIframeBeforePrint, { once: true });
 
+      if (mode === 'pdf') {
+        showSwalToast('info', 'เลือกปลายทาง "Save as PDF / บันทึกเป็น PDF" เพื่อบันทึกเป็นไฟล์ PDF');
+      }
+
       frameWin.focus();
       frameWin.print();
 
       setTimeout(() => {
+        frameWin.removeEventListener('beforeprint', onIframeBeforePrint);
         if (iframePrintTriggered) {
-          setIsPrinting(false);
+          setPrintModeActive(null);
           return;
         }
-
-        // Fallback 1: try main window.print() in case subframe printing was restricted
-        let mainPrintTriggered = false;
-        const onMainBeforePrint = () => {
-          mainPrintTriggered = true;
-        };
-        window.addEventListener('beforeprint', onMainBeforePrint, { once: true });
-
-        try {
-          window.focus();
-          window.print();
-        } catch {
-          // ignore
-        }
-
-        setTimeout(async () => {
-          window.removeEventListener('beforeprint', onMainBeforePrint);
-          if (!mainPrintTriggered) {
-            // Fallback 2: sandbox completely blocks native print(); auto-download A4 PDF
-            showSwalAlert(
-              'info',
-              'บันทึกเป็นไฟล์ PDF 1 หน้า A4 แล้ว',
-              'เบราว์เซอร์ในโหมด Preview นี้ปิดกั้นหน้าต่างสั่งพิมพ์โดยตรง ระบบได้บันทึกเป็นไฟล์ PDF 1 หน้า A4 ให้เรียบร้อยแล้ว สามารถเปิดไฟล์ PDF เพื่อสั่งพิมพ์ได้ทันที'
-            );
-            await handleSavePdf();
-          }
-          setIsPrinting(false);
-        }, 350);
+        // Fallback: use main document @media print (HTML + CSS Print)
+        triggerMainWindowPrint();
       }, 350);
     } catch (err) {
-      console.warn('Direct print failed, falling back to PDF export:', err);
-      await handleSavePdf();
-      setIsPrinting(false);
+      console.warn('Browser print error:', err);
+      document.title = originalTitle;
+      setPrintModeActive(null);
+      showSwalAlert(
+        'info',
+        'กรุณาสั่งพิมพ์หรือบันทึก PDF ด้วยเบราว์เซอร์',
+        'กด Ctrl+P (หรือ Cmd+P บน Mac) แล้วเลือก "Save as PDF / บันทึกเป็น PDF" เพื่อบันทึกเอกสารขนาด 1 หน้า A4'
+      );
     }
   };
 
@@ -547,7 +736,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                 แบบฟอร์มบันทึกข้อความขออนุมัติซ่อมบำรุงพัสดุ-ครุภัณฑ์
               </h3>
               <p className="text-[11px] text-slate-300">
-                ขนาดมาตรฐาน 1 หน้า A4 ไม่ล้นกระดาษ (บันทึกเป็น PDF หรือกดพิมพ์ได้ทันที)
+                มาตรฐาน HTML + CSS Print ขนาด 1 หน้า A4 (รองรับ Browser Print to PDF ข้อความคมชัดแบบ Vector)
               </p>
             </div>
           </div>
@@ -565,23 +754,23 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
             )}
             <button
               type="button"
-              onClick={handleSavePdf}
-              disabled={isSavingPdf}
+              onClick={() => triggerHtmlCssPrint('pdf')}
+              disabled={printModeActive !== null}
               className="flex items-center space-x-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-900/50 cursor-pointer active:scale-95"
-              title="บันทึกเป็นไฟล์ PDF ขนาด A4 1 หน้าเท่านั้น"
+              title="บันทึกเป็นไฟล์ PDF ผ่าน Browser Print to PDF (เลือกปลายทาง Save as PDF)"
             >
               <Download className="w-4 h-4" />
-              <span>{isSavingPdf ? 'กำลังบันทึก PDF...' : 'บันทึกเป็น PDF'}</span>
+              <span>{printModeActive === 'pdf' ? 'กำลังเปิด Print to PDF...' : 'บันทึกเป็น PDF (Print to PDF)'}</span>
             </button>
             <button
               type="button"
-              onClick={handlePrint}
-              disabled={isPrinting}
+              onClick={() => triggerHtmlCssPrint('print')}
+              disabled={printModeActive !== null}
               className="flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-900/50 cursor-pointer active:scale-95"
-              title="พิมพ์แบบฟอร์มนี้โดยตรง"
+              title="พิมพ์แบบฟอร์มนี้โดยตรงด้วย HTML + CSS Print"
             >
               <Printer className="w-4 h-4" />
-              <span>{isPrinting ? 'กำลังสั่งพิมพ์...' : 'พิมพ์แบบฟอร์มนี้'}</span>
+              <span>{printModeActive === 'print' ? 'กำลังเตรียมหน้าพิมพ์...' : 'พิมพ์แบบฟอร์มนี้'}</span>
             </button>
             <button
               type="button"
@@ -717,70 +906,166 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
               background: white;
               box-shadow: 0 0 10px rgba(0,0,0,0.5);
               position: relative;
-              line-height: 1.35; 
+              line-height: 1.55; 
               display: flex;
               flex-direction: column;
               overflow: hidden;
               box-sizing: border-box;
               font-family: 'Sarabun', sans-serif;
-              font-size: 13px;
+              font-size: 12.5px;
               color: #000;
               margin: 0 auto;
           }
           .header-title {
               font-size: 15pt;
               font-weight: bold;
-              margin-bottom: 3px;
+              margin-bottom: 2px;
               margin-top: 2px;
+              line-height: 1.4;
           }
-          .row {
+          .row, .memo-row {
               display: flex;
-              align-items: baseline;
-              margin-bottom: 4px;
+              align-items: flex-end;
+              gap: 4px;
+              margin-bottom: 2px;
               width: 100%;
               max-width: 100%;
               box-sizing: border-box;
+              line-height: 1.55;
+          }
+          .memo-label {
+              flex-shrink: 0;
+              line-height: 1.55;
+              padding-bottom: 2px;
+          }
+          .memo-field {
+              display: inline-flex;
+              flex-direction: column;
+              justify-content: flex-end;
+              min-height: 21px;
+              flex-shrink: 0;
+              box-sizing: border-box;
+          }
+          .memo-field-flex {
+              flex: 1 1 0%;
+              min-width: 36px;
+          }
+          .memo-field-text-area {
+              display: block;
+              width: 100%;
+              min-height: 19px;
+              line-height: 1.55;
+              padding: 0 4px 2px 4px;
+              box-sizing: border-box;
+          }
+          .memo-input {
+              display: block;
+              width: 100%;
+              height: 20px;
+              border: none !important;
+              outline: none;
+              background: transparent;
+              font-family: 'Sarabun', sans-serif;
+              font-size: 12.5px;
+              line-height: 1.55;
+              padding: 0;
+              margin: 0;
+              color: #000080;
+              box-sizing: border-box;
+          }
+          .memo-static-text {
+              display: block;
+              width: 100%;
+              min-height: 19px;
+              border: none !important;
+              font-family: 'Sarabun', sans-serif;
+              font-size: 12.5px;
+              line-height: 1.55;
+              color: #000080;
+              white-space: normal;
+              word-break: break-word;
+              overflow-wrap: break-word;
+              padding: 0;
+              margin: 0;
+          }
+          .print-only-text {
+              display: none;
+          }
+          .memo-field-line {
+              display: block;
+              width: 100%;
+              height: 1px;
+              border-bottom: 1px dotted #000000;
+              flex-shrink: 0;
+          }
+          .memo-grid-2-header {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 14px;
+              width: 100%;
+          }
+          .memo-grid-item-1 {
+              display: grid;
+              grid-template-columns: 1.75fr 1fr;
+              gap: 8px;
+              width: 100%;
+          }
+          .memo-grid-item-2 {
+              display: grid;
+              grid-template-columns: 1.25fr 1fr;
+              gap: 8px;
+              width: 100%;
+          }
+          .memo-grid-item-3 {
+              display: grid;
+              grid-template-columns: 1.35fr 1fr 0.8fr;
+              gap: 8px;
+              width: 100%;
           }
           .bold { font-weight: bold; }
           .text-center { text-align: center; }
           .indent { padding-left: 2.5cm; }
           
-          .a4-page input[type="text"] {
-              border: none;
-              border-bottom: 1px dotted #000000;
-              background: transparent;
-              font-family: 'Sarabun', sans-serif;
-              font-size: 13px;
-              line-height: 1.2;
-              height: 1.25em;
-              vertical-align: baseline;
-              outline: none;
-              padding: 0 4px 1px 4px;
-              margin: 0;
-              color: #000080;
-              box-sizing: border-box;
-          }
-          .flex-input { flex-grow: 1; margin: 0 5px; }
-          
           .checkbox-label {
               display: inline-flex;
               align-items: center;
+              gap: 4px;
               cursor: pointer;
               margin-right: 5px;
+              line-height: 1.55;
           }
-          .checkbox-label input { margin-right: 3px; }
+          .checkbox-label input { margin: 0; }
           
           .grid-2 {
               display: grid;
               grid-template-columns: 1fr 1fr;
-              gap: 15px;
-              margin-top: 4px;
+              gap: 14px;
+              margin-top: 3px;
+              width: 100%;
           }
           
           .signature-box {
               display: flex;
               flex-direction: column;
               align-items: center;
+              gap: 1px;
+          }
+          .memo-sign-col {
+              display: flex;
+              flex-direction: column;
+              align-items: flex-start;
+              gap: 1px;
+          }
+          .memo-sign-row {
+              display: flex;
+              align-items: flex-end;
+              gap: 4px;
+              width: 100%;
+              margin-bottom: 2px;
+              line-height: 1.55;
+          }
+          .memo-sign-row-center {
+              justify-content: center;
           }
 
           hr { border: 0.5px solid #000; margin: 4px 0; }
@@ -802,7 +1087,7 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
           }
           
           @media print {
-              html, body {
+              html, body, #root {
                 background: white !important;
                 padding: 0 !important;
                 margin: 0 !important;
@@ -811,6 +1096,8 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                 height: 297mm !important;
                 max-height: 297mm !important;
                 width: 210mm !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
               }
               body * {
                 visibility: hidden !important;
@@ -869,18 +1156,24 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
                   flex-direction: column !important;
                   overflow: hidden !important;
                   box-sizing: border-box !important;
-                  line-height: 1.35 !important;
-                  font-size: 13px !important;
+                  line-height: 1.55 !important;
+                  font-size: 12.5px !important;
+                  color: #000000 !important;
               }
-              .a4-page input[type="text"] { 
-                color: #000 !important; 
-                border-bottom: 1px dotted #000000 !important; 
-                line-height: 1.2 !important;
-                font-size: 13px !important;
-                height: 1.25em !important;
-                vertical-align: baseline !important;
-                padding: 0 4px 1px 4px !important;
-                margin: 0 !important;
+              .a4-page .screen-only-input {
+                display: none !important;
+              }
+              .a4-page .print-only-text {
+                display: block !important;
+                color: #000000 !important;
+              }
+              .a4-page .memo-input,
+              .a4-page .memo-static-text {
+                color: #000000 !important;
+                border: none !important;
+              }
+              .a4-page .memo-field-line {
+                border-bottom: 1px dotted #000000 !important;
                 -webkit-print-color-adjust: exact !important;
                 print-color-adjust: exact !important;
               }
@@ -906,150 +1199,267 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
           <div>
             <div className="header-title" style={{ paddingLeft: '272px' }}>บันทึกข้อความ</div>
             
-            <div className="row" style={{ marginTop: '9px', marginBottom: '4px' }}>
-              <span className="bold" style={{ marginTop: '0px', marginBottom: '4px' }}>ส่วนราชการ</span>&nbsp;
-              <input 
-                type="text" 
+            <div className="memo-row" style={{ marginTop: '6px' }}>
+              <span className="bold memo-label">ส่วนราชการ</span>
+              <MemoField
                 readOnly={!canEditReporterFields}
-                value={govAgency} 
-                onChange={(e) => setGovAgency(e.target.value)} 
-                style={{ width: '82%', lineHeight: '15.6667px', marginLeft: '0px', marginTop: '3px', height: '16.8594px' }} 
+                value={govAgency}
+                onChange={setGovAgency}
+                flexGrow
               />
             </div>
             
-            <div className="row">
-              <div style={{ display: 'flex', flex: 6, alignItems: 'baseline' }}>
-                <span className="bold">ที่</span>&nbsp;กจ ๐๐๓.๓๐๘.๑/
-                <input 
-                  type="text" 
+            <div className="memo-grid-2-header">
+              <div className="memo-row">
+                <span className="bold memo-label">ที่</span>
+                <span className="memo-label">กจ ๐๐๓.๓๐๘.๑/</span>
+                <MemoField
                   readOnly={!canEditReporterFields}
-                  className="flex-input" 
-                  value={docNoSub} 
-                  onChange={(e) => setDocNoSub(e.target.value)} 
-                  style={{ maxWidth: '80px', height: '16.8594px' }} 
+                  value={docNoSub}
+                  onChange={setDocNoSub}
+                  flexGrow
+                  maxWidth="100px"
                 />
               </div>
-              <div style={{ display: 'flex', flex: 6, alignItems: 'baseline' }}>
-                <span className="bold">วันที่</span>
-                <input 
-                  type="text" 
+              <div className="memo-row">
+                <span className="bold memo-label">วันที่</span>
+                <MemoField
                   readOnly={!canEditReporterFields}
-                  className="flex-input" 
-                  value={docDate} 
-                  onChange={(e) => setDocDate(e.target.value)} 
-                  style={{ height: '16.8594px' }}
+                  value={docDate}
+                  onChange={setDocDate}
+                  flexGrow
                 />
               </div>
             </div>
 
-            <div className="row">
-              <span className="bold">เรื่อง</span>&nbsp;ขออนุมัติซ่อมบำรุงพัสดุ-ครุภัณฑ์
+            <div className="memo-row">
+              <span className="bold memo-label">เรื่อง</span>
+              <span className="memo-label">ขออนุมัติซ่อมบำรุงพัสดุ-ครุภัณฑ์</span>
             </div>
             
-            <div className="row" style={{ marginBottom: '5px' }}>
-              <span className="bold">เรียน</span>&nbsp;ผู้อำนวยการโรงพยาบาลสังขละบุรี
+            <div className="memo-row" style={{ marginBottom: '4px' }}>
+              <span className="bold memo-label">เรียน</span>
+              <span className="memo-label">ผู้อำนวยการโรงพยาบาลสังขละบุรี</span>
             </div>
           </div>
 
           {/* เนื้อหา */}
           <div>
-            <div style={{ paddingLeft: '20px', marginTop: '5px' }}>
-              ด้วยฝ่าย/งาน <input type="text" readOnly={!canEditReporterFields} value={deptName} onChange={(e) => setDeptName(e.target.value)} style={{ width: '220px' }} /> มีความประสงค์จะทำการซ่อมบำรุงพัสดุ ครุภัณฑ์
+            <div className="memo-row" style={{ paddingLeft: '20px', marginTop: '2px' }}>
+              <span className="memo-label">ด้วยฝ่าย/งาน</span>
+              <MemoField
+                readOnly={!canEditReporterFields}
+                value={deptName}
+                onChange={handleDeptNameChange}
+                width="220px"
+              />
+              <span className="memo-label">มีความประสงค์จะทำการซ่อมบำรุงพัสดุ ครุภัณฑ์</span>
             </div>
             
-            <div className="row" style={{ flexWrap: 'wrap' }}>
+            <div className="memo-row" style={{ flexWrap: 'wrap', alignItems: 'center', marginTop: '2px' }}>
               <label className="checkbox-label">
-                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'การแพทย์'} onChange={() => setCategory('การแพทย์')} style={{ marginBottom: '-11px', paddingBottom: '0px' }} /> การแพทย์
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'การแพทย์'} onChange={() => setCategory('การแพทย์')} /> การแพทย์
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'สำนักงาน'} onChange={() => setCategory('สำนักงาน')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> สำนักงาน
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'สำนักงาน'} onChange={() => setCategory('สำนักงาน')} /> สำนักงาน
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'ยานพาหนะ'} onChange={() => setCategory('ยานพาหนะ')} style={{ marginBottom: '-11px' }} /> ยานพาหนะ
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'ยานพาหนะ'} onChange={() => setCategory('ยานพาหนะ')} /> ยานพาหนะ
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'อาคาร'} onChange={() => setCategory('อาคาร')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> อาคาร
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'อาคาร'} onChange={() => setCategory('อาคาร')} /> อาคาร
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'สิ่งก่อสร้าง'} onChange={() => setCategory('สิ่งก่อสร้าง')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> สิ่งก่อสร้าง
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'สิ่งก่อสร้าง'} onChange={() => setCategory('สิ่งก่อสร้าง')} /> สิ่งก่อสร้าง
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'งานบ้านงานครัว'} onChange={() => setCategory('งานบ้านงานครัว')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> งานบ้านงานครัว
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'งานบ้านงานครัว'} onChange={() => setCategory('งานบ้านงานครัว')} /> งานบ้านงานครัว
               </label> /
               <label className="checkbox-label">
-                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'อุปกรณ์และอื่นๆ'} onChange={() => setCategory('อุปกรณ์และอื่นๆ')} style={{ marginBottom: '-11px', paddingLeft: '1px' }} /> อุปกรณ์และอื่นๆ
+                <input type="radio" name="cat" disabled={!canEditReporterFields} checked={category === 'อุปกรณ์และอื่นๆ'} onChange={() => setCategory('อุปกรณ์และอื่นๆ')} /> อุปกรณ์และอื่นๆ
               </label>
-              ตามตารางดังต่อไปนี้
+              <span>ตามตารางดังต่อไปนี้</span>
             </div>
 
             {/* รายการซ่อม */}
-            <div style={{ paddingLeft: '20px', marginTop: '5px' }}>
-              <div className="row">
-                1.เครื่อง<input type="text" readOnly={!canEditReporterFields} value={assetName} onChange={(e) => setAssetName(e.target.value)} style={{ width: '418px' }} /> 
-                รุ่น<input type="text" readOnly={!canEditReporterFields} className="flex-input" value={assetModel} onChange={(e) => setAssetModel(e.target.value)} />
+            <div style={{ paddingLeft: '20px', marginTop: '3px' }}>
+              <div className="memo-grid-item-1">
+                <div className="memo-row">
+                  <span className="memo-label">1.เครื่อง</span>
+                  <MemoField
+                    readOnly={!canEditReporterFields}
+                    value={assetName}
+                    onChange={setAssetName}
+                    flexGrow
+                  />
+                </div>
+                <div className="memo-row">
+                  <span className="memo-label">รุ่น</span>
+                  <MemoField
+                    readOnly={!canEditReporterFields}
+                    value={assetModel}
+                    onChange={setAssetModel}
+                    flexGrow
+                  />
+                </div>
               </div>
-              <div className="row">
-                ลักษณะ/อาการชำรุด<input type="text" readOnly={!canEditReporterFields} value={issueDesc} onChange={(e) => setIssueDesc(e.target.value)} style={{ width: '220px' }} /> 
-                หมายเลขครุภัณฑ์<input type="text" readOnly={!canEditReporterFields} className="flex-input" value={assetCode} onChange={(e) => setAssetCode(e.target.value)} />
+              <div className="memo-grid-item-2">
+                <div className="memo-row">
+                  <span className="memo-label">ลักษณะ/อาการชำรุด</span>
+                  <MemoField
+                    readOnly={!canEditReporterFields}
+                    value={issueDesc}
+                    onChange={setIssueDesc}
+                    flexGrow
+                  />
+                </div>
+                <div className="memo-row">
+                  <span className="memo-label">หมายเลขครุภัณฑ์</span>
+                  <MemoField
+                    readOnly={!canEditReporterFields}
+                    value={assetCode}
+                    onChange={setAssetCode}
+                    flexGrow
+                  />
+                </div>
               </div>
-              <div className="row">
-                บริษัท<input type="text" readOnly={!canEditReporterFields} value={company} onChange={(e) => setCompany(e.target.value)} style={{ width: '200px' }} /> 
-                เบอร์โทรศัพท์<input type="text" readOnly={!canEditReporterFields} value={phone} onChange={(e) => setPhone(e.target.value)} style={{ width: '100px' }} /> 
-                จำนวน<input type="text" readOnly={!canEditReporterFields} className="flex-input" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+              <div className="memo-grid-item-3">
+                <div className="memo-row">
+                  <span className="memo-label">บริษัท</span>
+                  <MemoField
+                    readOnly={!canEditReporterFields}
+                    value={company}
+                    onChange={setCompany}
+                    flexGrow
+                  />
+                </div>
+                <div className="memo-row">
+                  <span className="memo-label">เบอร์โทรศัพท์</span>
+                  <MemoField
+                    readOnly={!canEditReporterFields}
+                    value={phone}
+                    onChange={setPhone}
+                    flexGrow
+                  />
+                </div>
+                <div className="memo-row">
+                  <span className="memo-label">จำนวน</span>
+                  <MemoField
+                    readOnly={!canEditReporterFields}
+                    value={quantity}
+                    onChange={setQuantity}
+                    flexGrow
+                  />
+                </div>
               </div>
             </div>
                  
-            <div className="row" style={{ marginTop: '10px' }}>
-              จึงเรียนมาเพื่อโปรดพิจารณา
+            <div className="memo-row" style={{ marginTop: '6px' }}>
+              <span className="memo-label">จึงเรียนมาเพื่อโปรดพิจารณา</span>
             </div>
           </div>
 
           {/* ลายเซ็นส่วนที่ 1 */}
-          <div className="grid-2" style={{ marginTop: '10px' }}>
+          <div className="grid-2" style={{ marginTop: '6px' }}>
             <div className="signature-box">
-              <div className="row" style={{ justifyContent: 'center' }}>
-                ลงชื่อ<input type="text" readOnly={!canEditReporterFields} value={reporterSign} onChange={(e) => setReporterSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />ผู้ส่งซ่อม
+              <div className="memo-sign-row memo-sign-row-center">
+                <span className="memo-label">ลงชื่อ</span>
+                <MemoField
+                  readOnly={!canEditReporterFields}
+                  value={reporterSign}
+                  onChange={setReporterSign}
+                  width="155px"
+                  align="center"
+                />
+                <span className="memo-label">ผู้ส่งซ่อม</span>
               </div>
-              <div className="row" style={{ justifyContent: 'left' }}>
-                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                <input type="text" readOnly={!canEditReporterFields} value={reporterFullName} onChange={(e) => setReporterFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+              <div className="memo-sign-row memo-sign-row-center" style={{ paddingRight: '16px' }}>
+                <span className="memo-label">(</span>
+                <MemoField
+                  readOnly={!canEditReporterFields}
+                  value={reporterFullName}
+                  onChange={setReporterFullName}
+                  width="170px"
+                  align="center"
+                />
+                <span className="memo-label">)</span>
               </div>
-              <div className="row" style={{ justifyContent: 'center' }}>
-                ตำแหน่ง<input type="text" readOnly={!canEditReporterFields} value={reporterPosition} onChange={(e) => setReporterPosition(e.target.value)} style={{ width: '260px', textAlign: 'center' }} />
+              <div className="memo-sign-row memo-sign-row-center">
+                <span className="memo-label">ตำแหน่ง</span>
+                <MemoField
+                  readOnly={!canEditReporterFields}
+                  value={reporterPosition}
+                  onChange={setReporterPosition}
+                  width="220px"
+                  align="center"
+                  inputStyle={{ paddingRight: '91px' }}
+                />
               </div>
             </div>
 
             <div className="signature-box">
-              <div>ความเห็นของหัวหน้าฝ่าย/หัวหน้ากลุ่มงาน</div>
+              <div style={{ lineHeight: 1.55 }}>ความเห็นของหัวหน้าฝ่าย/หัวหน้ากลุ่มงาน</div>
               {isHeadApproved || canEditHeadFields ? (
                 <>
-                  <div className="row" style={{ justifyContent: 'center' }}>
-                    <input type="text" readOnly={!canEditHeadFields} value={headOpinion} onChange={(e) => setHeadOpinion(e.target.value)} style={{ width: '300px', textAlign: 'center' }} />
+                  <div className="memo-sign-row memo-sign-row-center">
+                    <MemoField
+                      readOnly={!canEditHeadFields}
+                      value={headOpinion}
+                      onChange={setHeadOpinion}
+                      width="275px"
+                      align="center"
+                    />
                   </div>
-                  <div className="row" style={{ justifyContent: 'center' }}>
-                    ลงชื่อ<input type="text" readOnly={!canEditHeadFields} value={headSign} onChange={(e) => setHeadSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />
+                  <div className="memo-sign-row memo-sign-row-center">
+                    <span className="memo-label">ลงชื่อ</span>
+                    <MemoField
+                      readOnly={!canEditHeadFields}
+                      value={headSign}
+                      onChange={setHeadSign}
+                      width="160px"
+                      align="center"
+                    />
                   </div>
-                  <div className="row" style={{ justifyContent: 'left' }}>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                    <input type="text" readOnly={!canEditHeadFields} value={headFullName} onChange={(e) => setHeadFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                  <div className="memo-sign-row memo-sign-row-center" style={{ paddingLeft: '35px' }}>
+                    <span className="memo-label">(</span>
+                    <MemoField
+                      readOnly={!canEditHeadFields}
+                      value={headFullName}
+                      onChange={setHeadFullName}
+                      width="170px"
+                      align="center"
+                    />
+                    <span className="memo-label">)</span>
                   </div>
-                  <div className="row" style={{ justifyContent: 'center' }}>
-                    ตำแหน่ง<input type="text" readOnly={!canEditHeadFields} value={headPosition} onChange={(e) => setHeadPosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
+                  <div className="memo-sign-row memo-sign-row-center">
+                    <span className="memo-label">ตำแหน่ง</span>
+                    <MemoField
+                      readOnly={!canEditHeadFields}
+                      value={headPosition}
+                      onChange={setHeadPosition}
+                      width="225px"
+                      align="center"
+                      inputStyle={{ paddingRight: '71px' }}
+                    />
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="row" style={{ justifyContent: 'center', color: '#94a3b8' }}>
-                    .........................................................................................
+                  <div className="memo-sign-row memo-sign-row-center">
+                    <MemoField readOnly value="" width="275px" align="center" />
                   </div>
-                  <div className="row" style={{ justifyContent: 'center', marginTop: '4px' }}>
-                    ลงชื่อ..................................................
+                  <div className="memo-sign-row memo-sign-row-center">
+                    <span className="memo-label">ลงชื่อ</span>
+                    <MemoField readOnly value="" width="160px" align="center" />
                   </div>
-                  <div className="row" style={{ justifyContent: 'center' }}>
-                    (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
+                  <div className="memo-sign-row memo-sign-row-center">
+                    <span className="memo-label">(</span>
+                    <MemoField readOnly value="" width="170px" align="center" />
+                    <span className="memo-label">)</span>
                   </div>
-                  <div className="row" style={{ justifyContent: 'center' }}>
-                    ตำแหน่ง..................................................
+                  <div className="memo-sign-row memo-sign-row-center">
+                    <span className="memo-label">ตำแหน่ง</span>
+                    <MemoField readOnly value="" width="225px" align="center" />
                   </div>
                 </>
               )}
@@ -1057,160 +1467,362 @@ export const OfficialRepairPrintModal: React.FC<OfficialRepairPrintModalProps> =
           </div>
 
           {/* ซ่อมบำรุง (General Mechanic / Admin / Super Admin) */}
-          <div>
-            <div style={{ paddingLeft: '0px', marginTop: '5px' }}>
-              <div className="row">บันทึกหน่วยงานซ่อมบำรุง/ฝ่ายบริหารทั่วไป</div>
-              <div className="row">เสนอ ผู้อำนวยการโรงพยาบาลสังขละบุรี</div>
+          <div style={{ marginTop: '4px' }}>
+            <div>
+              <div className="memo-row"><span className="memo-label">บันทึกหน่วยงานซ่อมบำรุง/ฝ่ายบริหารทั่วไป</span></div>
+              <div className="memo-row"><span className="memo-label">เสนอ ผู้อำนวยการโรงพยาบาลสังขละบุรี</span></div>
             </div>
-            <div className="row">
+            <div className="memo-row" style={{ alignItems: 'center' }}>
               <label className="checkbox-label">
-                <input type="checkbox" disabled={!canEditMaintFields} checked={chkSelfFree} onChange={(e) => setChkSelfFree(e.target.checked)} />&nbsp;ซ่อมได้เองโดยช่างของโรงพยาบาล ไม่เสียค่าใช้จ่าย
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkSelfFree} onChange={(e) => setChkSelfFree(e.target.checked)} />
+                <span>ซ่อมได้เองโดยช่างของโรงพยาบาล ไม่เสียค่าใช้จ่าย</span>
               </label>
             </div>
-            <div className="row">
+            <div className="memo-row" style={{ alignItems: 'center' }}>
               <label className="checkbox-label">
-                <input type="checkbox" disabled={!canEditMaintFields} checked={chkSelfCost} onChange={(e) => setChkSelfCost(e.target.checked)} />&nbsp;ซ่อมได้เองโดยช่างของโรงพยาบาลโดยเสียค่าวัสดุเพิ่มเติม
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkSelfCost} onChange={(e) => setChkSelfCost(e.target.checked)} />
+                <span>ซ่อมได้เองโดยช่างของโรงพยาบาลโดยเสียค่าวัสดุเพิ่มเติม</span>
               </label>
             </div>
-            <div className="row">
+            <div className="memo-row" style={{ alignItems: 'center' }}>
               <label className="checkbox-label">
-                <input type="checkbox" disabled={!canEditMaintFields} checked={chkGovTech} onChange={(e) => setChkGovTech(e.target.checked)} />&nbsp;ส่งซ่อมกองช่างบำรุง
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkGovTech} onChange={(e) => setChkGovTech(e.target.checked)} />
+                <span>ส่งซ่อมกองช่างบำรุง</span>
               </label>
             </div>
-            <div className="row">
-              <label className="checkbox-label">
-                <input type="checkbox" disabled={!canEditMaintFields} checked={chkSelfCost || chkSelfFree} onChange={(e) => setChkSelfCost(e.target.checked)} />&nbsp;ระยะเวลาการซ่อมประมาณ
-                <input type="text" readOnly={!canEditMaintFields} value={repairDays} onChange={(e) => setRepairDays(e.target.value)} style={{ width: '40px', textAlign: 'center' }} />วัน&nbsp;&nbsp;ค่าใช้จ่ายประมาณ
-                <input type="text" readOnly={!canEditMaintFields} value={repairCost} onChange={(e) => setRepairCost(e.target.value)} style={{ width: '70px', textAlign: 'center' }} />บาท
+            <div className="memo-row">
+              <label className="checkbox-label" style={{ paddingBottom: '2px' }}>
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkSelfCost || chkSelfFree} onChange={(e) => setChkSelfCost(e.target.checked)} />
+                <span>ระยะเวลาการซ่อมประมาณ</span>
               </label>
+              <MemoField
+                readOnly={!canEditMaintFields}
+                value={repairDays}
+                onChange={setRepairDays}
+                width="45px"
+                align="center"
+              />
+              <span className="memo-label">วัน</span>
+              <span className="memo-label" style={{ marginLeft: '6px' }}>ค่าใช้จ่ายประมาณ</span>
+              <MemoField
+                readOnly={!canEditMaintFields}
+                value={repairCost}
+                onChange={setRepairCost}
+                width="75px"
+                align="center"
+              />
+              <span className="memo-label">บาท</span>
             </div>
-            <div style={{ paddingLeft: '0px', marginTop: '5px' }}>
-              <div className="row">ไม่สามารถซ่อมเองได้ จำเป็นต้องส่งซ่อมภายนอกหน่วยงาน</div>
+            <div style={{ marginTop: '3px' }}>
+              <div className="memo-row"><span className="memo-label">ไม่สามารถซ่อมเองได้ จำเป็นต้องส่งซ่อมภายนอกหน่วยงาน</span></div>
             </div>
-            <div className="row">
-              <label className="checkbox-label">
-                <input type="checkbox" disabled={!canEditMaintFields} checked={chkOutside} onChange={(e) => setChkOutside(e.target.checked)} />&nbsp;ส่งซ่อมบริษัท
-                <input type="text" readOnly={!canEditMaintFields} value={outsideCompany} onChange={(e) => setOutsideCompany(e.target.value)} style={{ width: '180px', textAlign: 'center' }} />
+            <div className="memo-row">
+              <label className="checkbox-label" style={{ paddingBottom: '2px' }}>
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkOutside} onChange={(e) => setChkOutside(e.target.checked)} />
+                <span>ส่งซ่อมบริษัท</span>
               </label>
+              <MemoField
+                readOnly={!canEditMaintFields}
+                value={outsideCompany}
+                onChange={setOutsideCompany}
+                width="190px"
+                align="center"
+              />
             </div>
-            <div className="row">
-              <label className="checkbox-label">
-                <input type="checkbox" disabled={!canEditMaintFields} checked={chkOther} onChange={(e) => setChkOther(e.target.checked)} />&nbsp;อื่นๆ
-                <input type="text" readOnly={!canEditMaintFields} value={otherDetails} onChange={(e) => setOtherDetails(e.target.value)} style={{ width: '230px', textAlign: 'center' }} />
+            <div className="memo-row">
+              <label className="checkbox-label" style={{ paddingBottom: '2px' }}>
+                <input type="checkbox" disabled={!canEditMaintFields} checked={chkOther} onChange={(e) => setChkOther(e.target.checked)} />
+                <span>อื่นๆ</span>
               </label>
+              <MemoField
+                readOnly={!canEditMaintFields}
+                value={otherDetails}
+                onChange={setOtherDetails}
+                width="240px"
+                align="center"
+              />
             </div>
           </div>
 
           {/* ลายเซ็นส่วนที่ 2 */}
-          <div className="grid-2" style={{ marginTop: '10px' }}>
-            <div className="signature-box" style={{ alignItems: 'flex-start' }}>
-              <div className="row" style={{ justifyContent: 'center' }}>
-                ลงชื่อ<input type="text" readOnly={!canEditMaintFields} value={maintSign} onChange={(e) => setMaintSign(e.target.value)} style={{ width: '160px', textAlign: 'center' }} />หน่วยงานซ่อมบำรุง
+          <div className="grid-2" style={{ marginTop: '6px' }}>
+            <div className="signature-box">
+              <div className="memo-sign-row memo-sign-row-center">
+                <span className="memo-label">ลงชื่อ</span>
+                <MemoField
+                  readOnly={!canEditMaintFields}
+                  value={maintSign}
+                  onChange={setMaintSign}
+                  width="150px"
+                  align="center"
+                />
+                <span className="memo-label">หน่วยงานซ่อมบำรุง</span>
               </div>
-              <div className="row" style={{ justifyContent: 'left', marginBottom: '5px' }}>
-                &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                <input type="text" readOnly={!canEditMaintFields} value={maintFullName} onChange={(e) => setMaintFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+              <div className="memo-sign-row memo-sign-row-center" style={{ paddingRight: '70px' }}>
+                <span className="memo-label">(</span>
+                <MemoField
+                  readOnly={!canEditMaintFields}
+                  value={maintFullName}
+                  onChange={setMaintFullName}
+                  width="170px"
+                  align="center"
+                />
+                <span className="memo-label">)</span>
               </div>
             </div>
           </div>
 
           {/* รับของ/ส่งของ */}
-          <div className="grid-2" style={{ marginTop: '10px' }}>
-            <div>
-              <span className="bold">จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ</span><br />
-              <br />
+          <div className="grid-2" style={{ marginTop: '6px' }}>
+            <div className="memo-sign-col">
+              <span className="bold" style={{ lineHeight: 1.55 }}>จึงเรียนมาเพื่อโปรดพิจารณาอนุมัติ</span>
+              <div style={{ height: '8px' }} />
               {isSupplyApproved || canEditSupplyFields ? (
                 <>
-                  <div className="row" style={{ marginTop: '4px' }}>
-                    (ลงชื่อ)<input type="text" readOnly={!canEditSupplyFields} value={procureSign} onChange={(e) => setProcureSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                  <div className="memo-sign-row">
+                    <span className="memo-label">(ลงชื่อ)</span>
+                    <MemoField
+                      readOnly={!canEditSupplyFields}
+                      value={procureSign}
+                      onChange={setProcureSign}
+                      width="165px"
+                      align="center"
+                    />
                   </div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;({procureSign || '......................................'})</div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ตำแหน่ง&nbsp;หัวหน้าเจ้าหน้าที่พัสดุ</div>
+                  <div className="memo-sign-row" style={{ paddingLeft: '32px' }}>
+                    <span className="memo-label">(</span>
+                    <MemoField
+                      readOnly
+                      value={procureSign}
+                      width="165px"
+                      align="center"
+                    />
+                    <span className="memo-label">)</span>
+                  </div>
+                  <div className="memo-sign-row" style={{ paddingLeft: '36px' }}>
+                    <span className="memo-label">ตำแหน่ง หัวหน้าเจ้าหน้าที่พัสดุ</span>
+                  </div>
                 </>
               ) : (
-                <div className="space-y-1">
-                  <div className="row" style={{ marginTop: '4px' }}>(ลงชื่อ)..................................................</div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ตำแหน่ง&nbsp;หัวหน้าเจ้าหน้าที่พัสดุ</div>
-                </div>
+                <>
+                  <div className="memo-sign-row">
+                    <span className="memo-label">(ลงชื่อ)</span>
+                    <MemoField readOnly value="" width="165px" align="center" />
+                  </div>
+                  <div className="memo-sign-row" style={{ paddingLeft: '32px' }}>
+                    <span className="memo-label">(</span>
+                    <MemoField readOnly value="" width="165px" align="center" />
+                    <span className="memo-label">)</span>
+                  </div>
+                  <div className="memo-sign-row" style={{ paddingLeft: '36px' }}>
+                    <span className="memo-label">ตำแหน่ง หัวหน้าเจ้าหน้าที่พัสดุ</span>
+                  </div>
+                </>
               )}
             </div>
 
-            <div>
-              <span className="bold">บันทึกหน่วยงานรับซ่อมบำรุง/บันทึกผู้ส่งของ</span><br />
-              ได้รับการซ่อมบำรุงตามรายการข้างต้นเรียบร้อยแล้ว<br />
-              <br />
+            <div className="memo-sign-col">
+              <span className="bold" style={{ lineHeight: 1.55 }}>บันทึกหน่วยงานรับซ่อมบำรุง/บันทึกผู้ส่งของ</span>
+              <span style={{ lineHeight: 1.55 }}>ได้รับการซ่อมบำรุงตามรายการข้างต้นเรียบร้อยแล้ว</span>
+              <div style={{ height: '4px' }} />
               {isTechnicianDone || canEditOtherFields ? (
                 <>
-                  <div className="row" style={{ marginTop: '4px' }}>
-                    &nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)<input type="text" readOnly={!canEditOtherFields} value={repairRequest.maintCompletedBy || deliverSign} onChange={(e) => setDeliverSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                  <div className="memo-sign-row" style={{ paddingLeft: '14px' }}>
+                    <span className="memo-label">(ลงชื่อ)</span>
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={repairRequest.maintCompletedBy || deliverSign}
+                      onChange={setDeliverSign}
+                      width="165px"
+                      align="center"
+                    />
                   </div>
-                  <div className="row">
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                    <input type="text" readOnly={!canEditOtherFields} value={repairRequest.maintCompletedBy || deliverFullName} onChange={(e) => setDeliverFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                  <div className="memo-sign-row" style={{ paddingLeft: '46px' }}>
+                    <span className="memo-label">(</span>
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={repairRequest.maintCompletedBy || deliverFullName}
+                      onChange={setDeliverFullName}
+                      width="165px"
+                      align="center"
+                    />
+                    <span className="memo-label">)</span>
                   </div>
-                  <div className="row">
-                    วันที่<input type="text" readOnly={!canEditOtherFields} value={deliverDay} onChange={(e) => setDeliverDay(e.target.value)} style={{ width: '40px', textAlign: 'center' }} />
-                    เดือน<input type="text" readOnly={!canEditOtherFields} value={deliverMonth} onChange={(e) => setDeliverMonth(e.target.value)} style={{ width: '90px', textAlign: 'center' }} />
-                    พ.ศ.<input type="text" readOnly={!canEditOtherFields} value={deliverYear} onChange={(e) => setDeliverYear(e.target.value)} style={{ width: '60px', textAlign: 'center' }} />
+                  <div className="memo-sign-row">
+                    <span className="memo-label">วันที่</span>
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={deliverDay}
+                      onChange={setDeliverDay}
+                      width="40px"
+                      align="center"
+                    />
+                    <span className="memo-label">เดือน</span>
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={deliverMonth}
+                      onChange={setDeliverMonth}
+                      width="85px"
+                      align="center"
+                    />
+                    <span className="memo-label">พ.ศ.</span>
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={deliverYear}
+                      onChange={setDeliverYear}
+                      width="55px"
+                      align="center"
+                    />
                   </div>
                 </>
               ) : (
-                <div className="space-y-1">
-                  <div className="row" style={{ marginTop: '4px' }}>&nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)..................................................</div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
-                  <div className="row">วันที่............เดือน..........................พ.ศ..............</div>
-                </div>
+                <>
+                  <div className="memo-sign-row" style={{ paddingLeft: '14px' }}>
+                    <span className="memo-label">(ลงชื่อ)</span>
+                    <MemoField readOnly value="" width="165px" align="center" />
+                  </div>
+                  <div className="memo-sign-row" style={{ paddingLeft: '46px' }}>
+                    <span className="memo-label">(</span>
+                    <MemoField readOnly value="" width="165px" align="center" />
+                    <span className="memo-label">)</span>
+                  </div>
+                  <div className="memo-sign-row">
+                    <span className="memo-label">วันที่</span>
+                    <MemoField readOnly value="" width="40px" align="center" />
+                    <span className="memo-label">เดือน</span>
+                    <MemoField readOnly value="" width="85px" align="center" />
+                    <span className="memo-label">พ.ศ.</span>
+                    <MemoField readOnly value="" width="55px" align="center" />
+                  </div>
+                </>
               )}
             </div>
           </div>
           
-          <div className="grid-2" style={{ marginTop: '10px' }}>
-            <div>
-              <span className="bold">ความคิดเห็นของผู้มีอำนาจอนุมัติ</span><br />
+          <div className="grid-2" style={{ marginTop: '6px' }}>
+            <div className="memo-sign-col">
+              <span className="bold" style={{ lineHeight: 1.55 }}>ความคิดเห็นของผู้มีอำนาจอนุมัติ</span>
               {isDirectorApproved || canEditOtherFields ? (
                 <>
-                  <input type="text" readOnly={!canEditOtherFields} value={repairRequest.approverComments || approverComments1} onChange={(e) => setApproverComments1(e.target.value)} style={{ width: '200px', textAlign: 'center' }} /><br />
-                  <input type="text" readOnly={!canEditOtherFields} value={approverComments2} onChange={(e) => setApproverComments2(e.target.value)} style={{ width: '200px', textAlign: 'center' }} /><br />
-                  <div className="row" style={{ marginTop: '4px' }}>
-                    (ลงชื่อ)<input type="text" readOnly={!canEditOtherFields} value={repairRequest.directorApprovedBy || approverSign} onChange={(e) => setApproverSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                  <div className="memo-sign-row">
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={repairRequest.approverComments || approverComments1}
+                      onChange={setApproverComments1}
+                      width="230px"
+                      align="center"
+                    />
                   </div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;({repairRequest.directorApprovedBy || approverSign || '......................................'})</div>
-                  <div className="row">นายแพทย์ชำนาญการ (ด้านเวชกรรม)</div>
-                  <div className="row">ตำแหน่ง&nbsp;ผู้อำนวยการโรงพยาบาลสังขละบุรี</div>
+                  <div className="memo-sign-row">
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={approverComments2}
+                      onChange={setApproverComments2}
+                      width="230px"
+                      align="center"
+                    />
+                  </div>
+                  <div className="memo-sign-row">
+                    <span className="memo-label">(ลงชื่อ)</span>
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={repairRequest.directorApprovedBy || approverSign}
+                      onChange={setApproverSign}
+                      width="165px"
+                      align="center"
+                      inputStyle={{ width: '200px', marginLeft: '-4px' }}
+                    />
+                  </div>
+                  <div className="memo-sign-row" style={{ paddingLeft: '32px' }}>
+                    <span className="memo-label">(</span>
+                    <MemoField
+                      readOnly
+                      value={repairRequest.directorApprovedBy || approverSign}
+                      width="165px"
+                      align="center"
+                    />
+                    <span className="memo-label">)</span>
+                  </div>
+                  <div className="memo-sign-row"><span className="memo-label" style={{ paddingRight: '0px', paddingLeft: '27px' }}>นายแพทย์ชำนาญการ (ด้านเวชกรรม)</span></div>
+                  <div className="memo-sign-row"><span className="memo-label">ตำแหน่ง ผู้อำนวยการโรงพยาบาลสังขละบุรี</span></div>
                 </>
               ) : (
-                <div className="space-y-1">
-                  <div>ความคิดเห็น: .....................................................</div>
-                  <div className="row" style={{ marginTop: '4px' }}>(ลงชื่อ)..................................................</div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
-                  <div className="row">ตำแหน่ง&nbsp;ผู้อำนวยการโรงพยาบาลสังขละบุรี</div>
-                </div>
+                <>
+                  <div className="memo-sign-row">
+                    <span className="memo-label">ความคิดเห็น:</span>
+                    <MemoField readOnly value="" width="180px" align="center" />
+                  </div>
+                  <div className="memo-sign-row">
+                    <MemoField readOnly value="" width="235px" align="center" />
+                  </div>
+                  <div className="memo-sign-row">
+                    <span className="memo-label">(ลงชื่อ)</span>
+                    <MemoField readOnly value="" width="165px" align="center" />
+                  </div>
+                  <div className="memo-sign-row" style={{ paddingLeft: '32px' }}>
+                    <span className="memo-label">(</span>
+                    <MemoField readOnly value="" width="165px" align="center" />
+                    <span className="memo-label">)</span>
+                  </div>
+                  <div className="memo-sign-row"><span className="memo-label">ตำแหน่ง ผู้อำนวยการโรงพยาบาลสังขละบุรี</span></div>
+                </>
               )}
             </div>
 
-            <div>
-              <span className="bold">บันทึกหน่วยงานรับซ่อมบำรุง/บันทึกผู้รับของ</span><br />
-              ได้รับการซ่อมบำรุงตามรายการข้างต้นเรียบร้อยแล้ว<br />
+            <div className="memo-sign-col">
+              <span className="bold" style={{ lineHeight: 1.55 }}>บันทึกหน่วยงานรับซ่อมบำรุง/บันทึกผู้รับของ</span>
+              <span style={{ lineHeight: 1.55 }}>ได้รับการซ่อมบำรุงตามรายการข้างต้นเรียบร้อยแล้ว</span>
               {isItemReceived || canEditOtherFields ? (
                 <>
-                  <div className="row" style={{ marginTop: '5px' }}>
-                    &nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)<input type="text" readOnly={!canEditOtherFields} value={repairRequest.itemReceivedBy || receiveSign} onChange={(e) => setReceiveSign(e.target.value)} style={{ width: '150px', textAlign: 'center' }} />
+                  <div className="memo-sign-row" style={{ paddingLeft: '14px', marginTop: '2px' }}>
+                    <span className="memo-label">(ลงชื่อ)</span>
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={repairRequest.itemReceivedBy || receiveSign}
+                      onChange={setReceiveSign}
+                      width="165px"
+                      align="center"
+                    />
                   </div>
-                  <div className="row">
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(
-                    <input type="text" readOnly={!canEditOtherFields} value={repairRequest.itemReceivedBy || receiveFullName} onChange={(e) => setReceiveFullName(e.target.value)} style={{ width: '170px', textAlign: 'center' }} />)
+                  <div className="memo-sign-row" style={{ paddingLeft: '46px' }}>
+                    <span className="memo-label">(</span>
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={repairRequest.itemReceivedBy || receiveFullName}
+                      onChange={setReceiveFullName}
+                      width="165px"
+                      align="center"
+                    />
+                    <span className="memo-label">)</span>
                   </div>
-                  <div className="row">
-                    ตำแหน่ง<input type="text" readOnly={!canEditOtherFields} value={receivePosition} onChange={(e) => setReceivePosition(e.target.value)} style={{ width: '270px', textAlign: 'center' }} />
+                  <div className="memo-sign-row">
+                    <span className="memo-label">ตำแหน่ง</span>
+                    <MemoField
+                      readOnly={!canEditOtherFields}
+                      value={receivePosition}
+                      onChange={setReceivePosition}
+                      width="210px"
+                      align="center"
+                      inputStyle={{ paddingRight: '75px' }}
+                    />
                   </div>
                 </>
               ) : (
-                <div className="space-y-1">
-                  <div className="row" style={{ marginTop: '5px' }}>&nbsp;&nbsp;&nbsp;&nbsp;(ลงชื่อ)..................................................</div>
-                  <div className="row">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>
-                  <div className="row">ตำแหน่ง..................................................</div>
-                </div>
+                <>
+                  <div className="memo-sign-row" style={{ paddingLeft: '14px', marginTop: '2px' }}>
+                    <span className="memo-label">(ลงชื่อ)</span>
+                    <MemoField readOnly value="" width="165px" align="center" />
+                  </div>
+                  <div className="memo-sign-row" style={{ paddingLeft: '46px' }}>
+                    <span className="memo-label">(</span>
+                    <MemoField readOnly value="" width="165px" align="center" />
+                    <span className="memo-label">)</span>
+                  </div>
+                  <div className="memo-sign-row">
+                    <span className="memo-label">ตำแหน่ง</span>
+                    <MemoField readOnly value="" width="210px" align="center" />
+                  </div>
+                </>
               )}
             </div>
           </div>
