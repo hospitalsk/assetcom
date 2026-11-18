@@ -29,6 +29,7 @@
     <script>
       // Fallback script if served on static hosting (e.g. GitHub Pages root branch) where raw .tsx cannot execute
       (function() {
+        if (document.querySelector('script[src*="/@vite/client"]')) return;
         setTimeout(function() {
           if (!window.__APP_MOUNTED__) {
             console.warn('App not mounted via dev server, checking static bundle fallback...');
