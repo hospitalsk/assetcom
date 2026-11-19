@@ -263,7 +263,7 @@ export const LoginModal: React.FC = () => {
                     }}
                     className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
                   />
-                  <span>จดจำการเข้าสู่ระบบ</span>
+                  <span>จดจำชื่อผู้ใช้งานและรหัสผ่าน</span>
                 </label>
                 <button
                   type="button"

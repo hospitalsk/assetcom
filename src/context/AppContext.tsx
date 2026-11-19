@@ -197,15 +197,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Restore login state if user checked "Remember Me"
+  // Always require login page first on every visit/reload
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
     try {
-      const remembered = localStorage.getItem('smart_asset_remember_me') === 'true';
-      const savedUser = localStorage.getItem('smart_asset_current_user');
-      return remembered && !!savedUser;
+      localStorage.removeItem('smart_asset_remember_me');
+      localStorage.removeItem('smart_asset_remember_user_id');
+      sessionStorage.removeItem('smart_asset_session_logged_in');
     } catch {
-      return false;
+      // ignore storage errors
     }
+    return false;
   });
 
   const [currentUser, setCurrentUser] = useState<UserProfile>(() => loadStorage('current_user', initialUsers[0]));
@@ -416,17 +417,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         localStorage.setItem('smart_asset_current_user', JSON.stringify(found));
         localStorage.setItem('smart_asset_remember_pref', rememberMe ? 'true' : 'false');
+        localStorage.removeItem('smart_asset_remember_me');
+        localStorage.removeItem('smart_asset_remember_user_id');
         if (rememberMe) {
-          localStorage.setItem('smart_asset_remember_me', 'true');
-          localStorage.setItem('smart_asset_remember_user_id', found.id);
           localStorage.setItem('smart_asset_remembered_username', userInput.trim());
           localStorage.setItem(
             'smart_asset_remembered_password',
             btoa(unescape(encodeURIComponent(password || '')))
           );
         } else {
-          localStorage.removeItem('smart_asset_remember_me');
-          localStorage.removeItem('smart_asset_remember_user_id');
           localStorage.removeItem('smart_asset_remembered_username');
           localStorage.removeItem('smart_asset_remembered_password');
         }
