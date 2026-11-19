@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
     <title>Smart Asset & IT Inventory Management System - ระบบบริหารจัดการครุภัณฑ์และวัสดุคอมพิวเตอร์</title>
     <meta name="description" content="ระบบบริหารจัดการครุภัณฑ์และวัสดุคอมพิวเตอร์ภาครัฐและโรงพยาบาล พร้อมทะเบียนครุภัณฑ์, คลังพัสดุ, QR Code, แจ้งซ่อม, คำนวณค่าเสื่อมราคา และแผนงบประมาณ" />
     <meta property="og:title" content="Smart Asset & IT Inventory Management System" />
@@ -26,33 +29,22 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
       </style>
     </div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script id="vite-dev-entry" type="module" src="/src/main.tsx"></script>
     <script>
-      // Fallback script if served on static hosting (e.g. GitHub Pages root branch) where raw .tsx cannot execute
+      // Fallback script ONLY when raw unbuilt index.html is served on static hosting (e.g. GitHub Pages root branch)
       (function() {
         if (document.querySelector('script[src*="/@vite/client"]')) return;
+        // In Vite production builds (dist/index.html), #vite-dev-entry is replaced with the hashed bundle
+        if (!document.getElementById('vite-dev-entry')) return;
         setTimeout(function() {
           if (!window.__APP_MOUNTED__) {
-            console.warn('App not mounted via dev server, checking static bundle fallback...');
+            console.warn('App not mounted from raw source, redirecting to built docs bundle...');
             if (window.location.hostname.endsWith('github.io')) {
               var path = window.location.pathname.replace(/\/index\.html$/i, '').replace(/\/+$/, '');
               if (!path.endsWith('/docs')) {
                 window.location.replace(path + '/docs/' + window.location.search + window.location.hash);
-                return;
               }
             }
-            // Load compiled assets if available
-            var script = document.createElement('script');
-            script.type = 'module';
-            script.crossOrigin = 'anonymous';
-            script.src = './assets/index.js';
-            document.body.appendChild(script);
-
-            var link = document.createElement('link');
-            link.rel = 'stylesheet';
-            link.crossOrigin = 'anonymous';
-            link.href = './assets/index.css';
-            document.head.appendChild(link);
           }
         }, 350);
       })();
